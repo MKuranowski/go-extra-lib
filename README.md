@@ -9,7 +9,9 @@ Packages
 --------
 
 - `slices2`: Extension to [golang.org/x/exp/slices](https://pkg.go.dev/golang.org/x/exp/slices), with more slice tricks.
-
+- `testing2`: Various assertions for writing tests, automatically-generated
+    - `assert`: assertions which immediately fail a test
+    - `check`: assertions which allow a test to continue
 
 License
 -------
