@@ -27,6 +27,22 @@ func TestOverSlice(t *testing.T) {
 	assert.NoErrMsg(t, i.Err(), "i.Err()")
 }
 
+func TestOver(t *testing.T) {
+	i := Over(1, 2, 3)
+
+	assert.TrueMsg(t, i.Next(), "i.Next(): 1st call")
+	assert.EqMsg(t, i.Get(), 1, "i.Get(): 1st call")
+
+	assert.TrueMsg(t, i.Next(), "i.Next(): 2nd call")
+	assert.EqMsg(t, i.Get(), 2, "i.Get(): 2nd call")
+
+	assert.TrueMsg(t, i.Next(), "i.Next(): 3rd call")
+	assert.EqMsg(t, i.Get(), 3, "i.Get(): 3rd call")
+
+	assert.FalseMsg(t, i.Next(), "i.Next(): 4th call")
+	assert.NoErrMsg(t, i.Err(), "i.Err()")
+}
+
 func TestOverChannel(t *testing.T) {
 	ch := make(chan int)
 	go func() {

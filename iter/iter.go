@@ -77,6 +77,15 @@ func OverSlice[T any](s []T) Iterator[T] {
 	return &sliceIterator[T]{s, -1}
 }
 
+// Over returns an iterator over the provided elements.
+//
+// Equivalent to OverSlice.
+//
+// The Err() method always returns nil.
+func Over[T any](s ...T) Iterator[T] {
+	return &sliceIterator[T]{s: s, i: -1}
+}
+
 type channelIterator[T any] struct {
 	ch <-chan T
 	e  T
