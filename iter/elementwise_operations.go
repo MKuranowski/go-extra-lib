@@ -79,10 +79,10 @@ func Accumulate[T any](i Iterator[T], f func(accumulator T, element T) T) Iterat
 // Assuming that the function provided is summation (`(a, b) => a + b`),
 // these are the results of AccumulateWithInitial:
 //
-//	Accumulate([1 2 3 4 5], sum, 0) → [0 1 3 6 10 15]
-//	Accumulate([1 2 3 4 5], sum, 5) → [5 6 8 11 15 20]
-//	Accumulate([1], sum, 5) → [5 6]
-//	Accumulate([], sum, 5) → [5]
+//	AccumulateWithInitial([1 2 3 4 5], sum, 0) → [0 1 3 6 10 15]
+//	AccumulateWithInitial([1 2 3 4 5], sum, 5) → [5 6 8 11 15 20]
+//	AccumulateWithInitial([1], sum, 5) → [5 6]
+//	AccumulateWithInitial([], sum, 5) → [5]
 //
 // See function Accumulate, which is assumes the first element of an iterator
 // is the initial accumulator value.
@@ -171,6 +171,9 @@ func AllFunc[T any](i Iterator[T], f func(T) bool) bool {
 }
 
 // Count exhausts the iterator and returns the number of elements encountered.
+//
+//	Count([1 2 3]) → 3
+//	Count([]) → 0
 func Count[T any](i Iterator[T]) int {
 	n := 0
 	for i.Next() {
@@ -206,8 +209,9 @@ func (i *dropWhileIterator[T]) Err() error { return i.i.Err() }
 // DropWhile drops the first elements for which `pred(elem)` is true.
 // Afterwards, all elements are returned (regardless for the result of pred)
 //
-//	DropWhile([1 2 3 2 1], n => n < 2) → [3 2 1]
-//	DropWhile([1 2 3 2 1], n => n < 5) → []
+//	DropWhile([1 2 3 2 1], x => x < 3) → [3 2 1]
+//	DropWhile([1 2 3 2 1], x => x < 5) → []
+//	DropWhile([1 2 3 2 1], x => x < 0) → [1 2 3 2 1]
 func DropWhile[T any](i Iterator[T], pred func(T) bool) Iterator[T] {
 	return &dropWhileIterator[T]{i: i, pred: pred}
 }
@@ -528,7 +532,8 @@ func NoneFunc[T any](i Iterator[T], f func(T) bool) bool {
 
 // Product returns the result of multiplying all elements in an iterator.
 //
-// Equivalent to `ReduceWithInitial(i, (a, b) => a * b, 1)`.
+// Equivalent to `ReduceWithInitial(i, (a, b) => a * b, 1)`, but removes
+// the function call for every element.
 //
 //	Product([1 2 3]) → 6
 //	Product([3+0i 1i]) → 3i
@@ -577,10 +582,10 @@ func Reduce[T any](i Iterator[T], f func(accumulator T, element T) T) (r T, ok b
 // Assuming that the function provided is summation (`(a, b) => a + b`),
 // these are the results of ReduceWithInitial:
 //
-//	Accumulate([1 2 3 4 5], sum, 0) → 15
-//	Accumulate([1 2 3 4 5], sum, 5) → 20
-//	Accumulate([1], sum, 5) → 6
-//	Accumulate([], sum, 5) → 5
+//	ReduceWithInitial([1 2 3 4 5], sum, 0) → 15
+//	ReduceWithInitial([1 2 3 4 5], sum, 5) → 20
+//	ReduceWithInitial([1], sum, 5) → 6
+//	ReduceWithInitial([], sum, 5) → 5
 //
 // See function Reduce, which is assumes the first value of an iterator
 // is the initial accumulator value.
@@ -640,11 +645,12 @@ func Slice[T any](i Iterator[T], start, stop int) Iterator[T] {
 
 // Sum returns the result of adding all elements of the iterable.
 //
-// Equivalent to `ReduceWithInitial(i, (a, b) => a + b, 0)`.
+// Equivalent to `ReduceWithInitial(i, (a, b) => a + b, 0)`, but removes
+// the function call for every element.
 //
-//	Product([1 2 3]) → 6
-//	Product([3+0i 1i]) → 3+1i
-//	Product([]) → 1
+//	Sum([1 2 3]) → 6
+//	Sum([3+0i 1i]) → 3+1i
+//	Sum([]) → 0
 func Sum[T constraints.Integer | constraints.Float | constraints.Complex](i Iterator[T]) T {
 	var r T
 	for i.Next() {
@@ -681,8 +687,9 @@ func (i *takeWhileIterator[T]) Err() error { return i.i.Err() }
 // TakeWhile returns the first elements for which `pred(elem)` is true.
 // Afterwards, all elements are ignored (regardless for the result of pred).
 //
-//	TakeWhile([1 2 3 2 1], n => n < 3) → [1 2]
-//	TakeWhile([1 2 3 2 1], n => n < 5) → [1 2 3 2 1]
+//	TakeWhile([1 2 3 2 1], x => x < 3) → [1 2]
+//	TakeWhile([1 2 3 2 1], x => x < 5) → [1 2 3 2 1]
+//	TakeWhile([3 2 1], x => x < 3) → []
 //
 // This function short-circuits and may not exhaust the provided iterator.
 func TakeWhile[T any](i Iterator[T], pred func(T) bool) Iterator[T] {
