@@ -3,6 +3,8 @@
 
 package iter
 
+import "strings"
+
 // IntoSlice collects all elements from an iterator into a single slice.
 func IntoSlice[T any](i Iterator[T]) []T {
 	s := make([]T, 0)
@@ -35,6 +37,15 @@ func IntoChannel[T any](i Iterator[T]) <-chan T {
 		}
 	}()
 	return ch
+}
+
+// IntoString collects all codepoints and returns a UTF-8 string containing those codepoints.
+func IntoString(i Iterator[rune]) string {
+	b := strings.Builder{}
+	for i.Next() {
+		b.WriteRune(i.Get())
+	}
+	return b.String()
 }
 
 // SendOver sends all elements from an iterator over a provided channel.

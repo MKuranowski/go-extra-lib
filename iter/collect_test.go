@@ -42,6 +42,14 @@ func TestIntoChannel(t *testing.T) {
 	assert.NoErrMsg(t, i.Err(), "i.Err()")
 }
 
+func TestIntoStringAscii(t *testing.T) {
+	assert.Eq(t, IntoString(Over('f', 'o', 'o')), "foo")
+}
+
+func TestIntoStringUnicode(t *testing.T) {
+	assert.Eq(t, IntoString(Over('ł', 'ó', 'd', 'ź')), "łódź")
+}
+
 func TestSendOver(t *testing.T) {
 	i := OverSlice([]int{1, 2, 3})
 	ch := make(chan int)
