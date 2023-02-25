@@ -4,11 +4,14 @@
 // iter is a package for operating on arbitrary collections of elements.
 package iter
 
-import "reflect"
+import (
+	"reflect"
+	"unicode/utf8"
+)
 
 // Iterable represents any user-defined struct which can be iterated over.
 //
-// Slices, maps and channels can also be iterated,
+// Slices, maps, channels and strings can also be iterated,
 // but in order to get an iterator use one of the OverXxx methods.
 type Iterable[T any] interface {
 	Iter() Iterator[T]
@@ -194,6 +197,35 @@ func (i *mapValueIterator[V]) Err() error { return nil }
 // The Err() method always returns nil.
 func OverMapValues[K comparable, V any](m map[K]V) Iterator[V] {
 	return &mapValueIterator[V]{i: reflect.ValueOf(m).MapRange()}
+}
+
+type stringIterator struct {
+	rest string
+	c    rune
+}
+
+func (i *stringIterator) Next() bool {
+	if len(i.rest) == 0 {
+		return false
+	}
+
+	var size int
+	i.c, size = utf8.DecodeRuneInString(i.rest)
+	i.rest = i.rest[size:]
+	return true
+}
+
+func (i *stringIterator) Get() rune  { return i.c }
+func (i *stringIterator) Err() error { return nil }
+
+// OverString returns an iterator over UTF-8 codepoints in the string.
+//
+// If the string contains invalid UTF-8 sequences, the replacement character (U+FFFD)
+// is returned, and iteration advances over a single byte.
+//
+// The Err() method always returns nil.
+func OverString(s string) Iterator[rune] {
+	return &stringIterator{rest: s}
 }
 
 type emptyIterator[T any] struct{}

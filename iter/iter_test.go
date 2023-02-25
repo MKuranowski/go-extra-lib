@@ -162,6 +162,60 @@ func TestOverMapValues(t *testing.T) {
 	assert.NoErrMsg(t, i.Err(), "i.Err()")
 }
 
+func TestOverStringAscii(t *testing.T) {
+	i := OverString("foo")
+
+	assert.TrueMsg(t, i.Next(), "i.Next(): 1st call")
+	assert.EqMsg(t, i.Get(), 'f', "i.Get(): 1st call")
+
+	assert.TrueMsg(t, i.Next(), "i.Next(): 2nd call")
+	assert.EqMsg(t, i.Get(), 'o', "i.Get(): 2nd call")
+
+	assert.TrueMsg(t, i.Next(), "i.Next(): 3rd call")
+	assert.EqMsg(t, i.Get(), 'o', "i.Get(): 3rd call")
+
+	assert.FalseMsg(t, i.Next(), "i.Next(): 4th call")
+	assert.NoErrMsg(t, i.Err(), "i.Err()")
+}
+
+func TestOverStringUnicode(t *testing.T) {
+	i := OverString("łódź")
+
+	assert.TrueMsg(t, i.Next(), "i.Next(): 1st call")
+	assert.EqMsg(t, i.Get(), 'ł', "i.Get(): 1st call")
+
+	assert.TrueMsg(t, i.Next(), "i.Next(): 2nd call")
+	assert.EqMsg(t, i.Get(), 'ó', "i.Get(): 2nd call")
+
+	assert.TrueMsg(t, i.Next(), "i.Next(): 3rd call")
+	assert.EqMsg(t, i.Get(), 'd', "i.Get(): 3rd call")
+
+	assert.TrueMsg(t, i.Next(), "i.Next(): 4th call")
+	assert.EqMsg(t, i.Get(), 'ź', "i.Get(): 4th call")
+
+	assert.FalseMsg(t, i.Next(), "i.Next(): 5th call")
+	assert.NoErrMsg(t, i.Err(), "i.Err()")
+}
+
+func TestOverStringInvalidUnicode(t *testing.T) {
+	i := OverString("\xB3\xF3d\x9F") // "łódź" in CP-1250
+
+	assert.TrueMsg(t, i.Next(), "i.Next(): 1st call")
+	assert.EqMsg(t, i.Get(), '\uFFFD', "i.Get(): 1st call")
+
+	assert.TrueMsg(t, i.Next(), "i.Next(): 2nd call")
+	assert.EqMsg(t, i.Get(), '\uFFFD', "i.Get(): 2nd call")
+
+	assert.TrueMsg(t, i.Next(), "i.Next(): 3rd call")
+	assert.EqMsg(t, i.Get(), 'd', "i.Get(): 3rd call")
+
+	assert.TrueMsg(t, i.Next(), "i.Next(): 4th call")
+	assert.EqMsg(t, i.Get(), '\uFFFD', "i.Get(): 4th call")
+
+	assert.FalseMsg(t, i.Next(), "i.Next(): 5th call")
+	assert.NoErrMsg(t, i.Err(), "i.Err()")
+}
+
 func TestEmpty(t *testing.T) {
 	i := Empty[int]()
 	assert.FalseMsg(t, i.Next(), "i.Next()")
