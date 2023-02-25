@@ -9,7 +9,7 @@ import "reflect"
 // Iterable represents any user-defined struct which can be iterated over.
 //
 // Slices, maps and channels can also be iterated,
-// but in order to get an iterator call iter.OverSlice, iter.OverMap or iter.OverChannel.
+// but in order to get an iterator use one of the OverXxx methods.
 type Iterable[T any] interface {
 	Iter() Iterator[T]
 }
@@ -17,7 +17,7 @@ type Iterable[T any] interface {
 // Iterator represents a state of iteration over elements of type T.
 //
 // Calling iterator.Get() or iterator.Next() the second time
-// after iterator.Next() returned false is unspecified behavior and will usually panic.
+// after iterator.Next() returned false is undefined behavior and will usually panic.
 //
 // Iterators should start in a state before-the-first-element,
 // as iteration is performed in the following pattern:
@@ -128,7 +128,7 @@ func OverChannel[T any](ch <-chan T) Iterator[T] {
 
 // Pair is a utility type containing two possibly heterogenous elements.
 //
-// Use e.g. by OverMap() or Pairwise().
+// Use e.g. by [OverMap] or [Pairwise].
 type Pair[T any, U any] struct {
 	First  T
 	Second U
@@ -170,7 +170,7 @@ func (i *mapKeyIterator[K]) Next() bool { return i.i.Next() }
 func (i *mapKeyIterator[K]) Get() K     { return i.i.Key().Interface().(K) }
 func (i *mapKeyIterator[K]) Err() error { return nil }
 
-// OverMap returns an iterator over keys of a map.
+// OverMapKeys returns an iterator over keys of a map.
 //
 // Keys are generated in an arbitrary order.
 //
@@ -187,7 +187,7 @@ func (i *mapValueIterator[V]) Next() bool { return i.i.Next() }
 func (i *mapValueIterator[V]) Get() V     { return i.i.Value().Interface().(V) }
 func (i *mapValueIterator[V]) Err() error { return nil }
 
-// OverMap returns an iterator over keys of a map.
+// OverMapValues returns an iterator over values of a map.
 //
 // Keys are generated in an arbitrary order.
 //
