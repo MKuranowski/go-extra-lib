@@ -22,8 +22,9 @@ func isOver18(p person) bool     { return p.age >= 18 }
 func younger(p1, p2 person) bool { return p1.age < p2.age }
 func older(p1, p2 person) bool   { return p1.age > p2.age }
 
-func add(a, b int) int { return a + b }
-func isOdd(x int) bool { return x%2 == 1 }
+func add(a, b int) int  { return a + b }
+func isOdd(x int) bool  { return x%2 == 1 }
+func isEven(x int) bool { return x%2 == 0 }
 
 func TestAccumulate(t *testing.T) {
 	check.DeepEqMsg(
