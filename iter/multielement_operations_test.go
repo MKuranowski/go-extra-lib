@@ -6,6 +6,7 @@ package iter_test
 import (
 	"errors"
 	"testing"
+	"unicode"
 
 	. "github.com/MKuranowski/go-extra-lib/iter"
 	"github.com/MKuranowski/go-extra-lib/testing2/check"
@@ -282,6 +283,48 @@ func TestSortStableFunc(t *testing.T) {
 		)),
 		[]person{{"Bob", 25}, {"Deborah", 25}, {"Alice", 30}, {"Charlie", 41}},
 		"SortStableFunc(people, p => p.age)",
+	)
+}
+
+func TestSplitOn(t *testing.T) {
+	check.DeepEqMsg(
+		t,
+		IntoSlice(Map(
+			SplitOn(OverString("foo bar baz"), unicode.IsSpace),
+			IntoString, // Collect inner "words" into strings
+		)),
+		[]string{"foo", "bar", "baz"},
+		"SplitOn(\"foo bar baz\", unicode.IsSpace)",
+	)
+
+	check.DeepEqMsg(
+		t,
+		IntoSlice(Map(
+			SplitOn(OverString("foo   bar  baz  "), unicode.IsSpace),
+			IntoString, // Collect inner "words" into strings
+		)),
+		[]string{"foo", "bar", "baz"},
+		"SplitOn(\"foo   bar  baz  \", unicode.IsSpace)",
+	)
+
+	check.DeepEqMsg(
+		t,
+		IntoSlice(Map(
+			SplitOn(OverString("   "), unicode.IsSpace),
+			IntoString, // Collect inner "words" into strings
+		)),
+		[]string{},
+		"SplitOn(\"   \", unicode.IsSpace)",
+	)
+
+	check.DeepEqMsg(
+		t,
+		IntoSlice(Map(
+			SplitOn(OverString(""), unicode.IsSpace),
+			IntoString, // Collect inner "words" into strings
+		)),
+		[]string{},
+		"SplitOn(\"\", unicode.IsSpace)",
 	)
 }
 

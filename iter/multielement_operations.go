@@ -11,14 +11,14 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-type groupByState uint8
+type deepIterState uint8
 
 const (
-	groupByStateNotStarted groupByState = iota
-	groupByStateNextGroup
-	groupByStateInGroup
-	groupByStateEndGroup
-	groupByStateFinished
+	deepIterStateNotStarted deepIterState = iota
+	deepIterStateNextGroup
+	deepIterStateInGroup
+	deepIterStateEndGroup
+	deepIterStateFinished
 )
 
 type chainIterator[T any] struct {
@@ -241,37 +241,37 @@ type groupByIterator[T, K any] struct {
 	e     T
 	k     K
 	err   error
-	state groupByState
+	state deepIterState
 }
 
 func (i *groupByIterator[T, K]) onEnd() bool {
 	i.err = i.i.Err()
-	i.state = groupByStateFinished
+	i.state = deepIterStateFinished
 	return false
 }
 
 func (i *groupByIterator[T, K]) Next() bool {
 	switch i.state {
 
-	case groupByStateNotStarted:
+	case deepIterStateNotStarted:
 		// unconditionally start next group
 		if i.i.Next() {
 			i.e = i.i.Get()
 			i.k = i.key(i.e)
-			i.state = groupByStateNextGroup
+			i.state = deepIterStateNextGroup
 			return true
 		} else {
 			return i.onEnd()
 		}
 
-	case groupByStateNextGroup, groupByStateInGroup:
+	case deepIterStateNextGroup, deepIterStateInGroup:
 		// find the start of next group
 		for i.i.Next() {
 			i.e = i.i.Get()
 			elemKey := i.key(i.e)
 			if !i.eq(elemKey, i.k) {
 				i.k = elemKey
-				i.state = groupByStateNextGroup
+				i.state = deepIterStateNextGroup
 				return true
 			}
 		}
@@ -279,12 +279,12 @@ func (i *groupByIterator[T, K]) Next() bool {
 		// no next group - end
 		return i.onEnd()
 
-	case groupByStateEndGroup:
+	case deepIterStateEndGroup:
 		// grouper has encountered a different key and advanced to it
-		i.state = groupByStateNextGroup
+		i.state = deepIterStateNextGroup
 		return true
 
-	case groupByStateFinished:
+	case deepIterStateFinished:
 		// nothing to do - already exhausted
 		return false
 
@@ -299,38 +299,38 @@ func (i *groupByIterator[T, K]) Get() Pair[K, Iterator[T]] {
 
 func (i *groupByIterator[T, K]) nextInGroup() bool {
 	switch i.state {
-	case groupByStateNotStarted:
+	case deepIterStateNotStarted:
 		panic("groupByGrouper.Next() called before groupByIterator.Next()")
 
-	case groupByStateNextGroup:
+	case deepIterStateNextGroup:
 		// just entered a new group - return the new key
-		i.state = groupByStateInGroup
+		i.state = deepIterStateInGroup
 		return true
 
-	case groupByStateInGroup:
+	case deepIterStateInGroup:
 		if i.i.Next() {
 			i.e = i.i.Get()
 			elemKey := i.key(i.e)
 			if !i.eq(elemKey, i.k) {
 				// new key seen - advance to next group
 				i.k = elemKey
-				i.state = groupByStateEndGroup
+				i.state = deepIterStateEndGroup
 				return false // no more elements in this group
 			}
 
-			i.state = groupByStateInGroup
+			i.state = deepIterStateInGroup
 			return true
 
 		} else {
 			return i.onEnd()
 		}
 
-	case groupByStateEndGroup, groupByStateFinished:
+	case deepIterStateEndGroup, deepIterStateFinished:
 		// group already exhausted - nothing more to generate
 		return false
 
 	default:
-		panic(fmt.Sprintf("invalid groupByIterator state: %d", i.state))
+		panic(fmt.Sprintf("invalid deepIteratorState state: %d", i.state))
 	}
 }
 
@@ -552,6 +552,115 @@ func SortStableFunc[T any](i Iterator[T], less func(T, T) bool) Iterator[T] {
 	s := IntoSlice(i)
 	slices.SortStableFunc(s, less)
 	return OverSlice(s)
+}
+
+type splitOnIterator[T any] struct {
+	i           Iterator[T]
+	shouldSplit func(T) bool
+
+	v     T
+	err   error
+	state deepIterState
+}
+
+func (i *splitOnIterator[T]) onEnd() bool {
+	i.err = i.i.Err()
+	i.state = deepIterStateFinished
+	return false
+}
+
+func (i *splitOnIterator[T]) Next() bool {
+	switch i.state {
+
+	case deepIterStateNotStarted, deepIterStateNextGroup, deepIterStateInGroup:
+		// find the start of next group
+		for i.i.Next() {
+			i.v = i.i.Get()
+			if !i.shouldSplit(i.v) {
+				i.state = deepIterStateNextGroup
+				return true
+			}
+		}
+		return i.onEnd()
+
+	case deepIterStateEndGroup:
+		// It's impossible to end a group without stepping onto an element,
+		// which should be returned as part of next group.
+		//
+		// It nextInGroup() has encountered an element for which shouldSplit is true,
+		// the transition should be made to the deepIterStateNextGroup start -
+		// to start looking for the next group.
+		panic("deppIteratorStateEndGroup is invalid for splitOnIterator")
+
+	case deepIterStateFinished:
+		// nothing to do - already exhausted
+		return false
+
+	default:
+		panic(fmt.Sprintf("invalid deepIteratorState state: %d", i.state))
+	}
+}
+
+func (i *splitOnIterator[T]) Get() Iterator[T] {
+	return &splitOnInnerIterator[T]{i}
+}
+
+func (i *splitOnIterator[T]) nextInGroup() bool {
+	switch i.state {
+	case deepIterStateNotStarted:
+		panic("splitOnInnerIterator.Next() called before splitOnIterator.Next()")
+
+	case deepIterStateNextGroup:
+		// just entered a new group - return the first element
+		i.state = deepIterStateInGroup
+		return true
+
+	case deepIterStateInGroup:
+		if i.i.Next() {
+			i.v = i.i.Get()
+			if i.shouldSplit(i.v) {
+				i.state = deepIterStateNextGroup
+				return false
+			} else {
+				return true
+			}
+		} else {
+			return i.onEnd()
+		}
+
+	case deepIterStateEndGroup, deepIterStateFinished:
+		// group already exhausted - nothing more to generate
+		return false
+
+	default:
+		panic(fmt.Sprintf("invalid deepIteratorState state: %d", i.state))
+	}
+}
+
+func (i *splitOnIterator[T]) getInGroup() T { return i.v }
+
+func (i *splitOnIterator[T]) Err() error { return i.err }
+
+type splitOnInnerIterator[T any] struct{ i *splitOnIterator[T] }
+
+func (g *splitOnInnerIterator[T]) Next() bool { return g.i.nextInGroup() }
+func (g *splitOnInnerIterator[T]) Get() T     { return g.i.getInGroup() }
+func (g *splitOnInnerIterator[T]) Err() error { return g.i.Err() }
+
+// SplitOn splits an iterator into multiple iterators, separated by
+// runs of elements for which shouldSplit returns true.
+//
+// The inner iterator is shared with the SplitOn iterator, so the inner "words"
+// are not available after calling splitOnIterator.Next().
+//
+// Functionally equivalent to GroupBy + Filter, while also discarding the boolean "keys".
+//
+//	SplitOn("foo bar baz", unicode.IsSpace) → ["foo" "bar" "baz"]
+//	SplitOn("foo   bar  baz  ", unicode.IsSpace) → ["foo" "bar" "baz"]
+//	SplitOn("   ", unicode.IsSpace) → []
+//	SplitOn("", unicode.IsSpace) → []
+func SplitOn[T any](i Iterator[T], shouldSplit func(T) bool) Iterator[Iterator[T]] {
+	return &splitOnIterator[T]{i: i, shouldSplit: shouldSplit}
 }
 
 type zipIterator[T any] struct {
