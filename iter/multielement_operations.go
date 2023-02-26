@@ -677,6 +677,7 @@ func (i *zipIterator[T]) Next() bool {
 }
 
 func (i *zipIterator[T]) Get() []T {
+	// TODO: Avoid allocating a slice for every call to Get
 	r := make([]T, 0, len(i.its))
 	for _, it := range i.its {
 		r = append(r, it.Get())
@@ -736,6 +737,7 @@ func (i *zipLongestIterator[T]) Next() bool {
 }
 
 func (i *zipLongestIterator[T]) Get() []T {
+	// TODO: Avoid allocating a slice for every call to Get
 	r := make([]T, 0, len(i.its))
 	for n, it := range i.its {
 		if i.isDone(n) {
