@@ -13,6 +13,13 @@ type Pair[T any, U any] struct {
 	Second U
 }
 
+// NumericComparable is a constraint that permits any type which supports arithmetic operators + - * /
+// and comparison operators < <= >= >.
+// Coincidentally, such types can be constructed from untyped integer constants and compared with != and ==.
+type NumericComparable interface {
+	constraints.Integer | constraints.Float
+}
+
 // Numeric is a constraint that permits any type which supports arithmetic operators + - * /.
 // Coincidentally, such types can be constructed from untyped integer constants.
 type Numeric interface {
