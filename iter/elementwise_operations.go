@@ -538,7 +538,7 @@ func NoneFunc[T any](i Iterator[T], f func(T) bool) bool {
 //	Product([1 2 3]) → 6
 //	Product([3+0i 1i]) → 3i
 //	Product([]) → 1
-func Product[T constraints.Integer | constraints.Float | constraints.Complex](i Iterator[T]) T {
+func Product[T Numeric](i Iterator[T]) T {
 	r := T(1)
 	for i.Next() {
 		r *= i.Get()
@@ -651,7 +651,7 @@ func Slice[T any](i Iterator[T], start, stop int) Iterator[T] {
 //	Sum([1 2 3]) → 6
 //	Sum([3+0i 1i]) → 3+1i
 //	Sum([]) → 0
-func Sum[T constraints.Integer | constraints.Float | constraints.Complex](i Iterator[T]) T {
+func Sum[T Numeric](i Iterator[T]) T {
 	var r T
 	for i.Next() {
 		r += i.Get()

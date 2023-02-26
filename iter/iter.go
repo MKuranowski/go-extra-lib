@@ -129,14 +129,6 @@ func OverChannel[T any](ch <-chan T) Iterator[T] {
 	return &channelIterator[T]{ch: ch}
 }
 
-// Pair is a utility type containing two possibly heterogenous elements.
-//
-// Use e.g. by [OverMap] or [Pairwise].
-type Pair[T any, U any] struct {
-	First  T
-	Second U
-}
-
 type mapIterator[K comparable, V any] struct {
 	i *reflect.MapIter
 }
