@@ -79,6 +79,21 @@ func TestAccumulateWithInitial(t *testing.T) {
 	)
 }
 
+func TestAggregateBy(t *testing.T) {
+	names := []string{"Alice", "Andrew", "Bob", "Casey", "Adam", "Amelia", "Chloe", "Craig", "Brian"}
+
+	check.DeepEqMsg(
+		t,
+		AggregateBy(OverSlice(names), func(x string) string { return x[:1] }),
+		map[string][]string{
+			"A": {"Alice", "Andrew", "Adam", "Amelia"},
+			"B": {"Bob", "Brian"},
+			"C": {"Casey", "Chloe", "Craig"},
+		},
+		"AggregateBy(names, name => name[0])",
+	)
+}
+
 func TestAny(t *testing.T) {
 	check.TrueMsg(
 		t,

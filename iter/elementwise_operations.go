@@ -92,6 +92,24 @@ func AccumulateWithInitial[T, R any](i Iterator[T], f func(accumulator R, elemen
 	return &accumulateIterator[T, R]{i: i, f: f, acc: initial, state: accumulateIteratorStateInitial}
 }
 
+// AggregateBy collects elements from an iterable, and groups them by the `key` function.
+//
+// Similar to [GroupBy], except that this function does work like SQL's GROUP BY construct
+// and therefore does not care whether the elements are sorted by the key.
+//
+//	names := ["Alice" "Andrew" "Bob" "Casey" "Adam" "Amelia" "Chloe" "Craig" "Brian"]
+//	AggregateBy(names, name => name[0])
+//	→ map["A":["Alice" "Andrew" "Adam" "Amelia"] "B":["Bob" "Brian"] "C":["Casey" "Chloe" "Craig"]]
+func AggregateBy[K comparable, V any](i Iterator[V], key func(V) K) map[K][]V {
+	r := make(map[K][]V)
+	for i.Next() {
+		v := i.Get()
+		k := key(v)
+		r[k] = append(r[k], v)
+	}
+	return r
+}
+
 // Any returns true if any element for the iterator is true.
 //
 //	Any([false true false]) → true
