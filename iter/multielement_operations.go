@@ -664,7 +664,8 @@ func SplitOn[T any](i Iterator[T], shouldSplit func(T) bool) Iterator[Iterator[T
 }
 
 type zipIterator[T any] struct {
-	its []Iterator[T]
+	its  []Iterator[T]
+	dest []T
 }
 
 func (i *zipIterator[T]) Next() bool {
@@ -677,13 +678,13 @@ func (i *zipIterator[T]) Next() bool {
 }
 
 func (i *zipIterator[T]) Get() []T {
-	// TODO: Avoid allocating a slice for every call to Get
-	r := make([]T, 0, len(i.its))
-	for _, it := range i.its {
-		r = append(r, it.Get())
+	for n, it := range i.its {
+		i.dest[n] = it.Get()
 	}
-	return r
+	return i.dest
 }
+
+func (i *zipIterator[T]) GetCopy() []T { return slices.Clone(i.Get()) }
 
 func (i *zipIterator[T]) Err() error {
 	var err error
@@ -708,16 +709,19 @@ func (i *zipIterator[T]) Err() error {
 // See [Pairwise] for zipping two heterogenous sequences, or
 // [ZipLongest] which stops only when all iterators are exhausted (and does not short-circuit).
 //
+// Subsequent calls to Get() return the same slice, but mutated. See [VolatileIterator].
+//
 // This function short-circuits and may not exhaust the provided iterator.
 func Zip[T any](its ...Iterator[T]) Iterator[[]T] {
 	if len(its) == 0 {
-		return Empty[[]T]()
+		return emptyIterator[[]T]{}
 	}
-	return &zipIterator[T]{its: its}
+	return &zipIterator[T]{its: its, dest: make([]T, len(its))}
 }
 
 type zipLongestIterator[T any] struct {
 	its  []Iterator[T]
+	dest []T
 	done uint64
 
 	fill T
@@ -737,17 +741,17 @@ func (i *zipLongestIterator[T]) Next() bool {
 }
 
 func (i *zipLongestIterator[T]) Get() []T {
-	// TODO: Avoid allocating a slice for every call to Get
-	r := make([]T, 0, len(i.its))
 	for n, it := range i.its {
 		if i.isDone(n) {
-			r = append(r, i.fill)
+			i.dest[n] = i.fill
 		} else {
-			r = append(r, it.Get())
+			i.dest[n] = it.Get()
 		}
 	}
-	return r
+	return i.dest
 }
+
+func (i *zipLongestIterator[T]) GetCopy() []T { return slices.Clone(i.Get()) }
 
 func (i *zipLongestIterator[T]) Err() error {
 	for _, it := range i.its {
@@ -771,6 +775,8 @@ func (i *zipLongestIterator[T]) Err() error {
 //	ZipLongest(-1, [1 2], Error(someErr)) → [[1 -1] [2 -1]]
 //	ZipLongest('-') → []
 //
+// Subsequent calls to Get() return the same slice, but mutated. See [VolatileIterator].
+//
 // See [PairwiseLongest] for zipping two heterogenous sequences, or
 // [Zip] which stops once any of iterators stops.
 func ZipLongest[T any](fill T, its ...Iterator[T]) Iterator[[]T] {
@@ -779,5 +785,5 @@ func ZipLongest[T any](fill T, its ...Iterator[T]) Iterator[[]T] {
 	} else if len(its) > 64 {
 		panic(fmt.Sprintf("ZipLongest only supports up to 64 iterators, got %d", len(its)))
 	}
-	return &zipLongestIterator[T]{its: its, fill: fill}
+	return &zipLongestIterator[T]{its: its, fill: fill, dest: make([]T, len(its))}
 }

@@ -6,11 +6,14 @@ package iter
 import (
 	"fmt"
 	"math/bits"
+
+	"golang.org/x/exp/slices"
 )
 
 type cartesianProductIterator[T any] struct {
 	items   [][]T
 	indices []int
+	dest    []T
 	started bool
 }
 
@@ -33,13 +36,13 @@ func (i *cartesianProductIterator[T]) Next() bool {
 }
 
 func (i *cartesianProductIterator[T]) Get() []T {
-	// TODO: Avoid allocating a slice for every call to Get
-	r := make([]T, 0, len(i.items))
 	for n, inner := range i.items {
-		r = append(r, inner[i.indices[n]])
+		i.dest[n] = inner[i.indices[n]]
 	}
-	return r
+	return i.dest
 }
+
+func (i *cartesianProductIterator[T]) GetCopy() []T { return slices.Clone(i.Get()) }
 
 func (i *cartesianProductIterator[T]) Err() error { return nil }
 
@@ -53,6 +56,8 @@ func (i *cartesianProductIterator[T]) Err() error { return nil }
 //	→ ["Ax1" "Ax2" "Ay1" "Ay2" "Bx1" "Bx2" "By1" "By2" "Cx1" "Cx2" "Cy1" "Cy2"]
 //	CartesianProduct("ABC", "") → []
 //	CartesianProduct() → []
+//
+// Subsequent calls to Get() return the same slice, but mutated. See [VolatileIterator].
 //
 // See [CartesianProductIter], which accepts an iterator over iterators.
 //
@@ -70,7 +75,11 @@ func CartesianProduct[T any](outer ...[]T) Iterator[[]T] {
 		}
 	}
 
-	return &cartesianProductIterator[T]{items: outer, indices: make([]int, len(outer))}
+	return &cartesianProductIterator[T]{
+		items:   outer,
+		indices: make([]int, len(outer)),
+		dest:    make([]T, len(outer)),
+	}
 }
 
 // CartesianProductIter collects the outer iterator and all inner iterators into slices,
@@ -84,6 +93,8 @@ func CartesianProduct[T any](outer ...[]T) Iterator[[]T] {
 //	CartesianProductIter(["ABC" ""]) → []
 //	CartesianProductIter([]) → []
 //
+// Subsequent calls to Get() return the same slice, but mutated. See [VolatileIterator].
+//
 // See [CartesianProduct], which accepts a slice of slices.
 //
 // The Err() method always returns nil.
@@ -96,10 +107,10 @@ func CartesianProductIter[T any](i Iterator[Iterator[T]]) Iterator[[]T] {
 }
 
 type combinationsIterator[T any] struct {
-	items   []T
-	indices []int
-	n, r    int
-	started bool
+	items, dest []T
+	indices     []int
+	n, r        int
+	started     bool
 }
 
 func (it *combinationsIterator[T]) Next() bool {
@@ -136,13 +147,13 @@ func (it *combinationsIterator[T]) Next() bool {
 }
 
 func (i *combinationsIterator[T]) Get() []T {
-	// TODO: Avoid allocating a slice for every call to Get
-	r := make([]T, 0, i.r)
-	for _, index := range i.indices {
-		r = append(r, i.items[index])
+	for n, index := range i.indices {
+		i.dest[n] = i.items[index]
 	}
-	return r
+	return i.dest
 }
+
+func (i *combinationsIterator[T]) GetCopy() []T { return slices.Clone(i.Get()) }
 
 func (*combinationsIterator[T]) Err() error { return nil }
 
@@ -161,6 +172,8 @@ func (*combinationsIterator[T]) Err() error { return nil }
 //	Combinations(3, 'a', 'b') → []
 //	Combinations(3) → []
 //
+// Subsequent calls to Get() return the same slice, but mutated. See [VolatileIterator].
+//
 // See also [CombinationsIter], which accepts an iterator; or [CombinationsWithReplacement],
 // which allows elements to appear multiple times in a subsequence.
 // To generate all r-length combinations use [PowerSet].
@@ -175,7 +188,7 @@ func Combinations[T any](r int, items ...T) Iterator[[]T] {
 		return Over([]T(nil))
 	}
 
-	return &combinationsIterator[T]{items: items, r: r}
+	return &combinationsIterator[T]{items: items, dest: make([]T, r), r: r}
 }
 
 // CombinationsIter collects the items into a slice and then
@@ -194,6 +207,8 @@ func Combinations[T any](r int, items ...T) Iterator[[]T] {
 //	CombinationsIter("ab", 3) → []
 //	CombinationsIter("", 3) → []
 //
+// Subsequent calls to Get() return the same slice, but mutated. See [VolatileIterator].
+//
 // See also [Combinations], which accepts a slice of elements; or [CombinationsWithReplacementIter],
 // which allows elements to appear multiple times in a subsequence.
 // To generate all r-length combinations use [PowerSetIter].
@@ -204,10 +219,10 @@ func CombinationsIter[T any](items Iterator[T], r int) Iterator[[]T] {
 }
 
 type combinationsWithReplacementIterator[T any] struct {
-	items   []T
-	indices []int
-	n, r    int
-	started bool
+	items, dest []T
+	indices     []int
+	n, r        int
+	started     bool
 }
 
 func (it *combinationsWithReplacementIterator[T]) Next() bool {
@@ -242,13 +257,13 @@ func (it *combinationsWithReplacementIterator[T]) Next() bool {
 }
 
 func (i *combinationsWithReplacementIterator[T]) Get() []T {
-	// TODO: Avoid allocating a slice for every call to Get
-	r := make([]T, 0, i.r)
-	for _, index := range i.indices {
-		r = append(r, i.items[index])
+	for n, index := range i.indices {
+		i.dest[n] = i.items[index]
 	}
-	return r
+	return i.dest
 }
+
+func (i *combinationsWithReplacementIterator[T]) GetCopy() []T { return slices.Clone(i.Get()) }
 
 func (*combinationsWithReplacementIterator[T]) Err() error { return nil }
 
@@ -268,6 +283,8 @@ func (*combinationsWithReplacementIterator[T]) Err() error { return nil }
 //	CombinationsWithReplacement(0) → [[]]
 //	CombinationsWithReplacement(2) → []
 //
+// Subsequent calls to Get() return the same slice, but mutated. See [VolatileIterator].
+//
 // See also [CombinationsWithReplacementIter], which accepts an iterator; or [Combinations],
 // which does not allow an element to appear multiple times in the subsequence.
 //
@@ -281,7 +298,7 @@ func CombinationsWithReplacement[T any](r int, items ...T) Iterator[[]T] {
 		return Empty[[]T]()
 	}
 
-	return &combinationsWithReplacementIterator[T]{items: items, r: r}
+	return &combinationsWithReplacementIterator[T]{items: items, dest: make([]T, r), r: r}
 }
 
 // CombinationsWithReplacementIter collects all items into a slice and then
@@ -300,6 +317,8 @@ func CombinationsWithReplacement[T any](r int, items ...T) Iterator[[]T] {
 //	CombinationsWithReplacementIter("", 0) → [[]]
 //	CombinationsWithReplacementIter("", 2) → []
 //
+// Subsequent calls to Get() return the same slice, but mutated. See [VolatileIterator].
+//
 // See also [CombinationsWithReplacement], which accepts a slice; or [CombinationsIter],
 // which does not allow an element to appear multiple times in the subsequence.
 //
@@ -309,7 +328,7 @@ func CombinationsWithReplacementIter[T any](items Iterator[T], r int) Iterator[[
 }
 
 type permutationsIterator[T any] struct {
-	items           []T
+	items, dest     []T
 	indices, cycles []int
 	n, r            int
 	started         bool
@@ -356,13 +375,13 @@ func (it *permutationsIterator[T]) Next() bool {
 }
 
 func (i *permutationsIterator[T]) Get() []T {
-	// TODO: Avoid allocating a slice for every call to Get
-	r := make([]T, 0, i.r)
-	for _, index := range i.indices[:i.r] {
-		r = append(r, i.items[index])
+	for n, index := range i.indices[:i.r] {
+		i.dest[n] = i.items[index]
 	}
-	return r
+	return i.dest
 }
+
+func (i *permutationsIterator[T]) GetCopy() []T { return slices.Clone(i.Get()) }
 
 func (i *permutationsIterator[T]) Err() error { return nil }
 
@@ -380,6 +399,8 @@ func (i *permutationsIterator[T]) Err() error { return nil }
 //	Permutations(4, 'a', 'b', 'c') → []
 //	Permutations(4) → []
 //
+// Subsequent calls to Get() return the same slice, but mutated. See [VolatileIterator].
+//
 //	See also [PermutationsIter], which accepts an iterator.
 //
 // The Err() method always returns nil.
@@ -392,7 +413,7 @@ func Permutations[T any](r int, items ...T) Iterator[[]T] {
 		return Over([]T(nil))
 	}
 
-	return &permutationsIterator[T]{items: items, r: r}
+	return &permutationsIterator[T]{items: items, dest: make([]T, r), r: r}
 }
 
 // PermutationsIter collects all items into a slice, and then
@@ -410,6 +431,8 @@ func Permutations[T any](r int, items ...T) Iterator[[]T] {
 //	PermutationsIter("abc", 3) → []
 //	PermutationsIter(3) → []
 //
+// Subsequent calls to Get() return the same slice, but mutated. See [VolatileIterator].
+//
 //	See also [Permutations], which accepts a slice of elements.
 //
 // The Err() method always returns nil.
@@ -418,7 +441,7 @@ func PermutationsIter[T any](i Iterator[T], r int) Iterator[[]T] {
 }
 
 type powerSetIterator[T any] struct {
-	items        []T
+	items, dest  []T
 	current, end uint64
 	started      bool
 }
@@ -433,20 +456,25 @@ func (i *powerSetIterator[T]) Next() bool {
 }
 
 func (i *powerSetIterator[T]) Get() []T {
-	// Special case for the empty subset, to avoid allocating an empty slice
-	if i.current == 0 {
+	n := bits.OnesCount64(i.current)
+
+	// Special case for the empty subset, to avoid doing unnecessary work
+	if n == 0 {
 		return nil
 	}
 
-	// TODO: Avoid allocating a slice for every call to Get
-	r := make([]T, 0, bits.OnesCount64(i.current))
-	for n, elem := range i.items {
-		if i.current>>uint64(n)&1 != 0 {
-			r = append(r, elem)
+	destIdx := 0
+	for srcIdx, elem := range i.items {
+		if i.current>>uint64(srcIdx)&1 != 0 {
+			i.dest[destIdx] = elem
+			destIdx++
 		}
 	}
-	return r
+
+	return i.dest[:n]
 }
+
+func (i *powerSetIterator[T]) GetCopy() []T { return slices.Clone(i.Get()) }
 
 func (i *powerSetIterator[T]) Err() error { return nil }
 
@@ -459,6 +487,8 @@ func (i *powerSetIterator[T]) Err() error { return nil }
 //	PowerSet(1) → [[] [1]]
 //	PowerSet(1, 2) → [[] [1] [2] [1 2]]
 //	PowerSet(1, 2, 3) → [[] [1] [2] [1 2] [3] [1 3] [2 3] [1 2 3]]
+//
+// Subsequent calls to Get() return the same slice, but mutated. See [VolatileIterator].
 //
 // See [PowerSetIter], which accepts an iterator.
 //
@@ -473,7 +503,7 @@ func PowerSet[T any](items ...T) Iterator[[]T] {
 		return Over([]T(nil))
 	}
 
-	return &powerSetIterator[T]{items: items, end: 1 << len(items)}
+	return &powerSetIterator[T]{items: items, dest: make([]T, len(items)), end: 1 << len(items)}
 }
 
 // PowerSetIter collects all elements into a slice, then generates all subsets of the elements.
@@ -484,6 +514,8 @@ func PowerSet[T any](items ...T) Iterator[[]T] {
 //	PowerSetIter([]) → [[]]
 //	PowerSetIter([1 2]) → [[] [1] [2] [1 2]]
 //	PowerSetIter([1 2 3]) → [[] [1] [2] [1 2] [3] [1 3] [2 3] [1 2 3]]
+//
+// Subsequent calls to Get() return the same slice, but mutated. See [VolatileIterator].
 //
 // See [PowerSet], which accepts a slice directly.
 //

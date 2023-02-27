@@ -19,9 +19,6 @@ type Iterable[T any] interface {
 
 // Iterator represents a state of iteration over elements of type T.
 //
-// Calling iterator.Get() or iterator.Next() the second time
-// after iterator.Next() returned false is undefined behavior and will usually panic.
-//
 // Iterators should start in a state before-the-first-element,
 // as iteration is performed in the following pattern:
 //
@@ -41,6 +38,16 @@ type Iterator[T any] interface {
 	// Get retrieves the current element of the iterator.
 	//
 	// Must not be called after Next() returned false.
+	//
+	// While it is not forbidden to call Get() multiple times without advancing
+	// the iterator, is is strongly advised not to do so. Calls to Get()
+	// can be arbitrarily complex; see e.g. [Map].
+	//
+	// All functionalities in the iter module ensure only a single call to Get() is made,
+	// as long as the caller also makes a single call to Get().
+	//
+	// If an Iterator also implements [VolatileIterator], subsequent calls to Get()
+	// may return the same element (usually a slice), just mutated.
 	Get() T
 
 	// Err returns any error encountered by the iterator.
@@ -50,6 +57,21 @@ type Iterator[T any] interface {
 	// Some iterator may never error out, and their Err() method may always return nil.
 	// See the documentation of relevant iterators.
 	Err() error
+}
+
+// VolatileIterator is an extension of the Iterator protocol,
+// used by iterators, whose return value of Get() is mutated between iterations.
+//
+// VolatileIterator is usually returned by functions which transform Iterator[T] to Iterator[[]T].
+// This allows those iterator to skip allocating a new slice with each call to Get().
+//
+// Use [ToNonVolatile] if newly-allocated elements are required with each iterator advancement.
+type VolatileIterator[T any] interface {
+	Iterator[T]
+
+	// GetCopy() return a (usually shallow) copy of the element,
+	// which would be returned by Get().
+	GetCopy() T
 }
 
 type sliceIterator[T any] struct {
@@ -222,9 +244,9 @@ func OverString(s string) Iterator[rune] {
 
 type emptyIterator[T any] struct{}
 
-func (i emptyIterator[T]) Next() bool { return false }
-func (i emptyIterator[T]) Get() T     { panic("can't get from an empty iterator") }
-func (i emptyIterator[T]) Err() error { return nil }
+func (emptyIterator[T]) Next() bool { return false }
+func (emptyIterator[T]) Get() T     { panic("can't get from an empty iterator") }
+func (emptyIterator[T]) Err() error { return nil }
 
 // Empty returns an iterator which never generates any elements,
 // and which never returns an error.
@@ -241,3 +263,27 @@ func (i errorIterator[T]) Err() error { return i.err }
 // Error returns an iterator, which never generates any elements,
 // but whose Err method returns a provided error.
 func Error[T any](err error) Iterator[T] { return errorIterator[T]{err} }
+
+type nonVolatileIterator[T any] struct {
+	i VolatileIterator[T]
+}
+
+func (i nonVolatileIterator[T]) Next() bool { return i.i.Next() }
+func (i nonVolatileIterator[T]) Get() T     { return i.i.GetCopy() }
+func (i nonVolatileIterator[T]) Err() error { return nil }
+
+// ToNonVolatile ensures that the returned iterator will return newly-allocated
+// elements on each call to Get().
+//
+// See the description of [VolatileIterator].
+//
+// For VolatileIterator inputs, returns an iterator whose Get() method calls through to GetCopy().
+// For other inputs, simply returns the input iterator.
+//
+// All of the IntoXxx functions automatically call ToNonVolatile.
+func ToNonVolatile[T any](i Iterator[T]) Iterator[T] {
+	if v, ok := i.(VolatileIterator[T]); ok {
+		return nonVolatileIterator[T]{v}
+	}
+	return i
+}

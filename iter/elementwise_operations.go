@@ -387,7 +387,12 @@ func (i *functionMapIterator[T, U]) Get() U {
 
 func (i *functionMapIterator[T, U]) Err() error { return i.i.Err() }
 
-// Map generates the results of applying a function to every element of an iterable
+// Map generates the results of applying a function to every element of an iterable.
+//
+// Every call to Get() results in a call to `f` - which might pose a problem
+// if `f` may have side effects. All functionality from the iter module
+// guarantees a single call to Get() if the caller also performs only a single call to Get()
+// per iteration.
 //
 //	Map([1 2 3], x => x + 5) → [6 7 8]
 func Map[T, U any](i Iterator[T], f func(T) U) Iterator[U] {
