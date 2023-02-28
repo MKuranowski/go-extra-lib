@@ -1,0 +1,277 @@
+// Copyright (c) 2023 Mikołaj Kuranowski
+// SPDX-License-Identifier: MIT
+
+package mcsv_test
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"log"
+	"strings"
+	"testing"
+
+	"github.com/MKuranowski/go-extra-lib/encoding/mcsv"
+	"github.com/MKuranowski/go-extra-lib/io2"
+	"github.com/MKuranowski/go-extra-lib/iter"
+	"github.com/MKuranowski/go-extra-lib/testing2/assert"
+	"github.com/MKuranowski/go-extra-lib/testing2/check"
+)
+
+const (
+	dataNewLines = "field1,field2,field3\r\n" +
+		"\"hello\",\"is it \"\"me\"\"\",\"you're\n" +
+		"looking for\"\r\n" +
+		"this is going to be,\"another\n" +
+		"broken row\",\"very confusing\"\r\n"
+)
+
+type readerTest struct {
+	name   string
+	input  string
+	header []string // If nil, use mcsv.NewReader; otherwise use mcsv.NewReaderWithHeader
+	result []map[string]string
+
+	comma rune // if non zero, set Reader.Comma
+}
+
+var readerTests = []readerTest{
+	{
+		name: "EuCities",
+		input: `"City","Country"
+"Berlin","Germany"
+"Madrid","Spain"
+"Rome","Italy"
+"Bucharest","Romania"
+"Paris","France"
+`,
+		header: nil,
+		result: []map[string]string{
+			{"City": "Berlin", "Country": "Germany"},
+			{"City": "Madrid", "Country": "Spain"},
+			{"City": "Rome", "Country": "Italy"},
+			{"City": "Bucharest", "Country": "Romania"},
+			{"City": "Paris", "Country": "France"},
+		},
+	},
+
+	{
+		name: "MathConstants",
+		input: `pi,3.1416
+sqrt2,1.4142
+phi,1.618
+e,2.7183
+`,
+		header: []string{"name", "value"},
+		result: []map[string]string{
+			{"name": "pi", "value": "3.1416"},
+			{"name": "sqrt2", "value": "1.4142"},
+			{"name": "phi", "value": "1.618"},
+			{"name": "e", "value": "2.7183"},
+		},
+	},
+
+	{
+		name: "MetroSystems",
+		input: `"City"	"Stations"	"System Length"
+"New York"	"424"	"380"
+"Shanghai"	"345"	"676"
+"Seoul"	"331"	"353"
+"Beijing"	"326"	"690"
+"Paris"	"302"	"214"
+"London"	"270"	"402"
+`,
+		result: []map[string]string{
+			{"City": "New York", "Stations": "424", "System Length": "380"},
+			{"City": "Shanghai", "Stations": "345", "System Length": "676"},
+			{"City": "Seoul", "Stations": "331", "System Length": "353"},
+			{"City": "Beijing", "Stations": "326", "System Length": "690"},
+			{"City": "Paris", "Stations": "302", "System Length": "214"},
+			{"City": "London", "Stations": "270", "System Length": "402"},
+		},
+		comma: '\t',
+	},
+
+	{
+		name:  "Newlines",
+		input: dataNewLines,
+		result: []map[string]string{
+			{"field1": "hello", "field2": "is it \"me\"", "field3": "you're\nlooking for"},
+			{"field1": "this is going to be", "field2": "another\nbroken row", "field3": "very confusing"},
+		},
+	},
+}
+
+func runReadTest(t *testing.T, r *mcsv.Reader, expected []map[string]string) {
+	it := iter.ZipLongest(nil, iter.OverIOReader[map[string]string](r), iter.OverSlice(expected))
+	i := 0
+	for it.Next() {
+		elem := it.Get()
+		check.DeepEqMsg(t, elem[0], elem[1], fmt.Sprintf("row %d", i))
+		i++
+	}
+	assert.NoErr(t, it.Err())
+}
+
+func runReadAllTest(t *testing.T, r *mcsv.Reader, expected []map[string]string) {
+	got, err := r.ReadAll()
+	assert.NoErr(t, err)
+
+	it := iter.ZipLongest(nil, iter.OverSlice(got), iter.OverSlice(expected))
+	i := 0
+	for it.Next() {
+		elem := it.Get()
+		check.DeepEqMsg(t, elem[0], elem[1], fmt.Sprintf("row %d", i))
+		i++
+	}
+	assert.NoErr(t, it.Err())
+}
+
+func getReaderForTest(test readerTest) (r *mcsv.Reader) {
+	inputReader := strings.NewReader(test.input)
+	if test.header != nil {
+		r = mcsv.NewReaderWithHeader(inputReader, test.header)
+	} else {
+		r = mcsv.NewReader(inputReader)
+	}
+
+	if test.comma != 0 {
+		r.Comma = test.comma
+	}
+
+	return
+}
+
+func ExampleReader() {
+	in := `number,value
+pi,3.1416
+sqrt2,1.4142
+phi,1.618
+e,2.7183
+`
+
+	r := mcsv.NewReader(strings.NewReader(in))
+
+	for {
+		record, err := r.Read()
+		if errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			log.Fatal(err)
+		}
+
+		fmt.Println("Number", record["number"], "has value", record["value"])
+	}
+
+	// Output:
+	// Number pi has value 3.1416
+	// Number sqrt2 has value 1.4142
+	// Number phi has value 1.618
+	// Number e has value 2.7183
+}
+
+func ExampleReader_missing_header() {
+	in := `pi,3.1416
+sqrt2,1.4142
+phi,1.618
+e,2.7183
+`
+
+	r := mcsv.NewReaderWithHeader(strings.NewReader(in), []string{"number", "value"})
+
+	for {
+		record, err := r.Read()
+		if errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			log.Fatal(err)
+		}
+
+		fmt.Println("Number", record["number"], "has value", record["value"])
+	}
+
+	// Output:
+	// Number pi has value 3.1416
+	// Number sqrt2 has value 1.4142
+	// Number phi has value 1.618
+	// Number e has value 2.7183
+}
+
+func TestReaderRead(t *testing.T) {
+	for _, test := range readerTests {
+		r := getReaderForTest(test)
+		t.Run(test.name, func(t *testing.T) { runReadTest(t, r, test.result) })
+	}
+}
+
+func TestReaderReadAll(t *testing.T) {
+	for _, test := range readerTests {
+		r := getReaderForTest(test)
+		t.Run(test.name, func(t *testing.T) { runReadAllTest(t, r, test.result) })
+	}
+}
+
+func TestReaderReadReuseRecord(t *testing.T) {
+	for _, test := range readerTests {
+		r := getReaderForTest(test)
+		r.ReuseRecord = true
+		t.Run(test.name, func(t *testing.T) { runReadTest(t, r, test.result) })
+	}
+}
+
+func TestReaderReadAllReuseRecord(t *testing.T) {
+	for _, test := range readerTests {
+		r := getReaderForTest(test)
+		r.ReuseRecord = true
+		t.Run(test.name, func(t *testing.T) { runReadAllTest(t, r, test.result) })
+	}
+}
+
+const readerBenchmarkData = `f1,f2,f3,f4
+a,b,c,d
+w,x,y,z
+i,j,k,l
+1,2,3,4
+`
+
+func runReadBenchmark(b *testing.B, header []string, initFunc func(*mcsv.Reader)) {
+	b.ReportAllocs()
+
+	var r *mcsv.Reader
+	in := io2.Repeated(readerBenchmarkData, b.N)
+	if header != nil {
+		r = mcsv.NewReaderWithHeader(in, header)
+	} else {
+		r = mcsv.NewReader(in)
+	}
+	if initFunc != nil {
+		initFunc(r)
+	}
+
+	b.ResetTimer()
+	for {
+		_, err := r.Read()
+		if errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			b.Fatal(err)
+		}
+	}
+
+}
+
+func BenchmarkReadWithHeader(b *testing.B) {
+	runReadBenchmark(b, []string{"f1", "f2", "f3", "f4"}, nil)
+}
+
+func BenchmarkReadWithoutHeader(b *testing.B) {
+	runReadBenchmark(b, []string{"f1", "f2", "f3", "f4"}, nil)
+}
+
+func BenchmarkReadWithHeaderReuseRecord(b *testing.B) {
+	runReadBenchmark(b, []string{"f1", "f2", "f3", "f4"}, func(r *mcsv.Reader) { r.ReuseRecord = true })
+}
+
+func BenchmarkReadWithoutHeaderReuseRecord(b *testing.B) {
+	runReadBenchmark(b, []string{"f1", "f2", "f3", "f4"}, func(r *mcsv.Reader) { r.ReuseRecord = true })
+}
