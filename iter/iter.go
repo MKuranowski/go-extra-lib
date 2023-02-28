@@ -5,6 +5,8 @@
 package iter
 
 import (
+	"errors"
+	"io"
 	"reflect"
 	"unicode/utf8"
 )
@@ -286,4 +288,32 @@ func ToNonVolatile[T any](i Iterator[T]) Iterator[T] {
 		return nonVolatileIterator[T]{v}
 	}
 	return i
+}
+
+type ioIterator[T any] struct {
+	r   IOReader[T]
+	v   T
+	err error
+}
+
+func (i *ioIterator[T]) Next() bool {
+	i.v, i.err = i.r.Read()
+	if errors.Is(i.err, io.EOF) {
+		i.err = nil
+		return false
+	} else if i.err != nil {
+		return false
+	}
+	return true
+}
+
+func (i *ioIterator[T]) Get() T     { return i.v }
+func (i *ioIterator[T]) Err() error { return i.err }
+
+// OverIOReader wraps an IOReader into an Iterator.
+//
+// See [IOReader] for a more detailed explanation;
+// but an example implementation of an IOReader is [csv.Reader].
+func OverIOReader[T any](r IOReader[T]) Iterator[T] {
+	return &ioIterator[T]{r: r}
 }

@@ -4,7 +4,9 @@
 package iter_test
 
 import (
+	"encoding/csv"
 	"errors"
+	"strings"
 	"testing"
 
 	. "github.com/MKuranowski/go-extra-lib/iter"
@@ -227,4 +229,16 @@ func TestError(t *testing.T) {
 	i := Error[int](dummyErr)
 	assert.FalseMsg(t, i.Next(), "i.Next()")
 	assert.SpecificErrMsg(t, i.Err(), dummyErr, "i.Err()")
+}
+
+func TestOverIOReader(t *testing.T) {
+	r := csv.NewReader(strings.NewReader("a,b,c\r\nx,y,z\r\n1,2,3\r\n"))
+
+	assert.DeepEqMsg(
+		t,
+		IntoSlice(OverIOReader[[]string](r)),
+		[][]string{{"a", "b", "c"}, {"x", "y", "z"}, {"1", "2", "3"}},
+		"OverIOReader(csv.Reader([\"a,b,c\\r\\nx,y,z\\r\\n1,2,3\\r\\n\"]))",
+	)
+
 }

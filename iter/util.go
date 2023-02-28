@@ -25,3 +25,13 @@ type NumericComparable interface {
 type Numeric interface {
 	constraints.Integer | constraints.Float | constraints.Complex
 }
+
+// IOReader is an interface satisfied by objects which incrementally
+// pull elements from an IO stream.
+//
+// The Read() method must return (nil, io.EOF) once no more elements are available.
+//
+// An example of IOReader implementation is [csv.Reader].
+type IOReader[T any] interface {
+	Read() (T, error)
+}
