@@ -7,14 +7,14 @@ package io2
 
 import "io"
 
-type repeated struct {
-	s             string
+type repeated[T ~string | ~[]byte] struct {
+	s             T
 	times, offset int
 }
 
-func (r *repeated) Read(p []byte) (n int, err error) {
+func (r *repeated[T]) Read(p []byte) (n int, err error) {
 	for {
-		if r.times <= 0 || r.s == "" {
+		if r.times <= 0 || len(r.s) == 0 {
 			err = io.EOF
 			return
 		}
@@ -35,4 +35,4 @@ func (r *repeated) Read(p []byte) (n int, err error) {
 }
 
 // Repeated yields the provided string n number of times.
-func Repeated(s string, n int) io.Reader { return &repeated{s: s, times: n} }
+func Repeated[T ~string | ~[]byte](s T, n int) io.Reader { return &repeated[T]{s: s, times: n} }
