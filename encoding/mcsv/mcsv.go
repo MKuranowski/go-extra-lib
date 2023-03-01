@@ -15,7 +15,7 @@ import (
 	"golang.org/x/exp/maps"
 )
 
-// Reader reads records from a CSV file.
+// Reader reads records from a CSV io.Reader.
 type Reader struct {
 	// Reader.Reader is the [csv.Reader] actually used for parsing the CSV file.
 	//
@@ -25,7 +25,7 @@ type Reader struct {
 	// The two unavailable options are `ReuseRecord` and `FieldsPerRecord`,
 	// those are controlled internally by the mcsv.Reader, and their values
 	// must not be changed.
-	csv.Reader
+	*csv.Reader
 
 	// Header is a slice of column names to be used as keys in returned records.
 	//
@@ -49,7 +49,7 @@ type Reader struct {
 //
 // The first row is assumed to be the header row.
 func NewReader(r io.Reader) *Reader {
-	n := &Reader{Reader: *csv.NewReader(r)}
+	n := &Reader{Reader: csv.NewReader(r)}
 	n.Reader.ReuseRecord = true
 	return n
 }
@@ -59,7 +59,7 @@ func NewReader(r io.Reader) *Reader {
 // Assumes that r does not contain a header row; instead header is
 // used as the column names. All rows in the CSV file must have len(header) fields.
 func NewReaderWithHeader(r io.Reader, header []string) *Reader {
-	n := &Reader{Reader: *csv.NewReader(r), Header: header}
+	n := &Reader{Reader: csv.NewReader(r), Header: header}
 	n.Reader.ReuseRecord = true
 	n.Reader.FieldsPerRecord = len(header)
 	return n
@@ -148,4 +148,71 @@ func (r *Reader) ReadAll() (records []map[string]string, err error) {
 	}
 
 	return
+}
+
+// Writer writes CSV records into a io.Writer.
+//
+// Writes to the underlying file are buffered and client must call Flush()
+// to ensure data was actually written to the io.Writer.
+// Any encountered errors may be checked with the Error() method.
+type Writer struct {
+	// Writer.Writer is the [csv.Writer] actually used for encoding and writing the CSV data.
+	//
+	// All options of the [csv.Writer] are available and can be set
+	// before the first call to Read / ReadAll.
+	*csv.Writer
+
+	// Header is a slice of column names to be used as keys in returned records.
+	//
+	// Set by NewWriter, must not be modified after construction.
+	Header []string
+
+	// row is a pre-allocated slice used for calling csv.Writer.Write.
+	row []string
+}
+
+// NewWriter returns a *Writer for encoding records as CSV and
+// writing them to an underlying io.Writer.
+//
+// The header row is not written to the file by default - use the WriteHeader().
+func NewWriter(w io.Writer, header []string) *Writer {
+	return &Writer{
+		Writer: csv.NewWriter(w),
+		Header: header,
+		row:    make([]string, len(header)),
+	}
+}
+
+// WriteHeader writes the header row.
+//
+// All writes to the underlying io.Writer are buffered and some data
+// may not be actually written unless Flush() is called.
+func (w *Writer) WriteHeader() error {
+	return w.Writer.Write(w.Header)
+}
+
+// Write writes a record to the CSV file.
+//
+// Any missing fields are replaced with an empty string,
+// and extra fields are ignored.
+//
+// All writes to the underlying io.Writer are buffered and some data
+// may not be actually written unless Flush() is called.
+func (w *Writer) Write(record map[string]string) error {
+	for i, column := range w.Header {
+		w.row[i] = record[column]
+	}
+	return w.Writer.Write(w.row)
+}
+
+// WriteAll calls Write for every provided record, and then calls Flush().
+func (w *Writer) WriteAll(records []map[string]string) error {
+	for _, record := range records {
+		err := w.Write(record)
+		if err != nil {
+			return err
+		}
+	}
+	w.Flush()
+	return w.Error()
 }

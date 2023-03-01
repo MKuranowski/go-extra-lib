@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"strings"
 	"testing"
 
@@ -257,7 +258,6 @@ func runReadBenchmark(b *testing.B, header []string, initFunc func(*mcsv.Reader)
 			b.Fatal(err)
 		}
 	}
-
 }
 
 func BenchmarkReadWithHeader(b *testing.B) {
@@ -274,4 +274,226 @@ func BenchmarkReadWithHeaderReuseRecord(b *testing.B) {
 
 func BenchmarkReadWithoutHeaderReuseRecord(b *testing.B) {
 	runReadBenchmark(b, []string{"f1", "f2", "f3", "f4"}, func(r *mcsv.Reader) { r.ReuseRecord = true })
+}
+
+type writerTest struct {
+	name   string
+	header []string
+	input  []map[string]string
+	output string
+
+	writeHeader bool
+	comma       rune // if non zero, set Writer.Comma
+}
+
+var writerTests = []writerTest{
+	{
+		name:   "EuCities",
+		header: []string{"City", "Country"},
+
+		input: []map[string]string{
+			{"City": "Berlin", "Country": "Germany"},
+			{"City": "Madrid", "Country": "Spain"},
+			{"City": "Rome", "Country": "Italy"},
+			{"City": "Bucharest", "Country": "Romania"},
+			{"City": "Paris", "Country": "France"},
+		},
+
+		output: `City,Country
+Berlin,Germany
+Madrid,Spain
+Rome,Italy
+Bucharest,Romania
+Paris,France
+`,
+
+		writeHeader: true,
+	},
+
+	{
+		name:   "MathConstants",
+		header: []string{"name", "value"},
+
+		input: []map[string]string{
+			{"name": "pi", "value": "3.1416"},
+			{"name": "sqrt2", "value": "1.4142"},
+			{"name": "phi", "value": "1.618"},
+			{"name": "e", "value": "2.7183"},
+		},
+
+		output: `pi,3.1416
+sqrt2,1.4142
+phi,1.618
+e,2.7183
+`,
+
+		writeHeader: false,
+	},
+
+	{
+		name:   "MetroSystems",
+		header: []string{"City", "Stations", "System Length"},
+
+		input: []map[string]string{
+			{"City": "New York", "Stations": "424", "System Length": "380"},
+			{"City": "Shanghai", "Stations": "345", "System Length": "676"},
+			{"City": "Seoul", "Stations": "331", "System Length": "353"},
+			{"City": "Beijing", "Stations": "326", "System Length": "690"},
+			{"City": "Paris", "Stations": "302", "System Length": "214"},
+			{"City": "London", "Stations": "270", "System Length": "402"},
+		},
+
+		output: `City	Stations	System Length
+New York	424	380
+Shanghai	345	676
+Seoul	331	353
+Beijing	326	690
+Paris	302	214
+London	270	402
+`,
+
+		writeHeader: true,
+		comma:       '\t',
+	},
+
+	{
+		name:   "Newlines",
+		header: []string{"field1", "field2", "field3"},
+
+		input: []map[string]string{
+			{"field1": "hello", "field2": "is it \"me\"", "field3": "you're\nlooking for"},
+			{"field1": "this is going to be", "field2": "another\nbroken row", "field3": "very confusing"},
+		},
+
+		output: `field1,field2,field3
+hello,"is it ""me""","you're
+looking for"
+this is going to be,"another
+broken row",very confusing
+`,
+
+		writeHeader: true,
+	},
+
+	{
+		name:   "MismatchedFields",
+		header: []string{"country", "population"},
+
+		input: []map[string]string{
+			{"country": "France", "population": "68000000", "capitol": "Paris"},
+			{"country": "Germany", "population": "84000000"},
+			{"country": "Spain", "capitol": "Madrid"},
+		},
+
+		output: `country,population
+France,68000000
+Germany,84000000
+Spain,
+`,
+
+		writeHeader: true,
+	},
+}
+
+func runWriterTest(t *testing.T, test writerTest, writeAll bool) {
+	// Create the writer
+	out := &strings.Builder{}
+	w := mcsv.NewWriter(out, test.header)
+
+	if test.comma != 0 {
+		w.Comma = test.comma
+	}
+
+	if test.writeHeader {
+		err := w.WriteHeader()
+		assert.NoErr(t, err)
+	}
+
+	if writeAll {
+		err := w.WriteAll(test.input)
+		assert.NoErr(t, err)
+	} else {
+		for _, record := range test.input {
+			err := w.Write(record)
+			assert.NoErr(t, err)
+		}
+
+		w.Flush()
+		assert.NoErr(t, w.Error())
+	}
+
+	check.Eq(t, out.String(), test.output)
+}
+
+func ExampleWriter() {
+	data := []map[string]string{
+		{"City": "Berlin", "Country": "Germany", "Population": "3 677 472"},
+		{"City": "Madrid", "Country": "Spain", "Population": "3 223 334"},
+		{"City": "Rome", "Country": "Italy"},
+		{"City": "Bucharest", "Country": "Romania", "Area": "240 km²"},
+		{"City": "Paris", "Country": "France", "Population": "2 165 423", "Area": "105 km²"},
+	}
+
+	w := mcsv.NewWriter(os.Stdout, []string{"City", "Country", "Population"})
+
+	// Write the header row
+	err := w.WriteHeader()
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	// Write every record
+	for _, record := range data {
+		err = w.Write(record)
+		if err != nil {
+			log.Fatalln(err)
+		}
+	}
+
+	// Flush the output
+	w.Flush()
+	err = w.Error()
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	// Output:
+	// City,Country,Population
+	// Berlin,Germany,3 677 472
+	// Madrid,Spain,3 223 334
+	// Rome,Italy,
+	// Bucharest,Romania,
+	// Paris,France,2 165 423
+}
+
+func TestWrite(t *testing.T) {
+	for _, test := range writerTests {
+		t.Run(test.name, func(t *testing.T) { runWriterTest(t, test, false) })
+	}
+}
+
+func TestWriteAll(t *testing.T) {
+	for _, test := range writerTests {
+		t.Run(test.name, func(t *testing.T) { runWriterTest(t, test, true) })
+	}
+}
+
+var writeBenchmarkRecords = []map[string]string{
+	{"name": "pi", "value": "3.1416"},
+	{"name": "sqrt2", "value": "1.4142"},
+	{"name": "phi", "value": "1.618"},
+	{"name": "e", "value": "2.7183"},
+	{"name": "i", "value": "0+1i"},
+}
+
+func BenchmarkWrite(b *testing.B) {
+	// NOTE: There are no performance-related settings (like what Reader has),
+	//       and so there is only this one write benchmark.
+
+	w := mcsv.NewWriter(io.Discard, []string{"name", "value"})
+	for i := 0; i < b.N; i++ {
+		for _, record := range writeBenchmarkRecords {
+			w.Write(record)
+		}
+	}
 }
