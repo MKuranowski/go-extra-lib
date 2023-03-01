@@ -19,6 +19,17 @@ Packages
     - `assert`: assertions which immediately fail a test
     - `check`: assertions which allow a test to continue
 
+TODO
+----
+
+- [ ] `container/gheap`: Generic version of `container/heap`
+- [ ] `container/glist`: Generic version of `container/list`
+- [ ] `container/gring`: Generic version of `container/ring`
+- [ ] `container/set`: An unordered collection of elements (map\[T\]struct{})
+- [ ] `iter/stream`: Java Stream-like wrapper on iterator operations
+- [ ] `maps2`: Extension to [golang.org/x/exp/maps](https://pkg.go.dev/golang.org/x/exp/maps), with more operations on maps.
+- [ ] `matrix`: 2D matrices of numbers
+
 License
 -------
 
