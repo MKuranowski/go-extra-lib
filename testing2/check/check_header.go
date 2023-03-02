@@ -3,3 +3,4 @@
 package check
 
 //go:generate python3 ../../generate_testing2.py check
+//go:generate gofmt -w check_generated.go

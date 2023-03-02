@@ -3,3 +3,4 @@
 package assert
 
 //go:generate python3 ../../generate_testing2.py assert
+//go:generate gofmt -w assert_generated.go

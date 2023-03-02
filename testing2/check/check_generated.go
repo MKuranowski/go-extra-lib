@@ -240,4 +240,3 @@ func NotNormalMsg(t *testing.T, got float64, msg string) {
 		t.Errorf("%s: got: %v, expected: %v", msg, got, "not NaN nor Inf")
 	}
 }
-
