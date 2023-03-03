@@ -10,6 +10,7 @@ Packages
 
 - `container`:
     - `bitset`: An efficient implementation of a set of unsigned numbers
+    - `set`: An unordered collection of elements (map\[T\]struct{})
 - `encoding`:
     - `mcsv`: CSV, but map\[string\]string instead of \[\]string
 - `io2`: Occasionally useful io.Readers
@@ -26,7 +27,6 @@ TODO
 - [ ] `container/gheap`: Generic version of `container/heap`
 - [ ] `container/glist`: Generic version of `container/list`
 - [ ] `container/gring`: Generic version of `container/ring`
-- [ ] `container/set`: An unordered collection of elements (map\[T\]struct{})
 - [ ] `iter/stream`: Java Stream-like wrapper on iterator operations
 - [ ] `maps2`: Extension to [golang.org/x/exp/maps](https://pkg.go.dev/golang.org/x/exp/maps), with more operations on maps.
 - [ ] `matrix`: 2D matrices of numbers
