@@ -81,8 +81,8 @@ func (s1 *BitSet) Intersection(s2 *BitSet) { s1.n.And(&s1.n, &s2.n) }
 // Difference ensures s1 does not contain any elements from s1.
 func (s1 *BitSet) Difference(s2 *BitSet) { s1.n.AndNot(&s1.n, &s2.n) }
 
-// IsDisjoined returns true if s1 and s2 have no elements in common.
-func (s1 *BitSet) IsDisjoined(s2 *BitSet) bool {
+// IsDisjoint returns true if s1 and s2 have no elements in common.
+func (s1 *BitSet) IsDisjoint(s2 *BitSet) bool {
 	return (&big.Int{}).And(&s1.n, &s2.n).Cmp(&bigZero) == 0
 }
 
@@ -184,8 +184,8 @@ func (s1 *Small) Intersection(s2 Small) { *s1 &= s2 }
 // Difference ensures b1 does not contain any elements from b2.
 func (s1 *Small) Difference(s2 Small) { *s1 &^= s2 }
 
-// IsDisjoined returns true if s1 and s2 have no elements in common.
-func (s1 Small) IsDisjoined(s2 Small) bool { return s1&s2 == 0 }
+// IsDisjoint returns true if s1 and s2 have no elements in common.
+func (s1 Small) IsDisjoint(s2 Small) bool { return s1&s2 == 0 }
 
 // IsSubset returns true if every element of s1 is also present in s2.
 func (s1 Small) IsSubset(s2 Small) bool { return s1&s2 == s1 }

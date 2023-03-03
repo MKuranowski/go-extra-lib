@@ -157,6 +157,102 @@ func TestBitSetDifference(t *testing.T) {
 	}
 }
 
+func TestBitSetIsDisjoint(t *testing.T) {
+	check.FalseMsg(
+		t,
+		Of(1, 2, 3).IsDisjoint(Of(1, 2, 3)),
+		"Of(1, 2, 3).IsDisjoined(Of(1, 2, 3))",
+	)
+
+	check.TrueMsg(
+		t,
+		Of(1, 2, 3).IsDisjoint(Of(4, 5, 6)),
+		"Of(1, 2, 3).IsDisjoined(Of(4, 5, 6))",
+	)
+
+	check.FalseMsg(
+		t,
+		Of(1, 2, 3).IsDisjoint(Of(3, 4, 5)),
+		"Of(1, 2, 3).IsDisjoined(Of(3, 5, 4))",
+	)
+}
+
+func TestBitSetIsSubset(t *testing.T) {
+	check.TrueMsg(
+		t,
+		Of(1, 2, 3).IsSubset(Of(1, 2, 3)),
+		"Of(1, 2, 3).IsSubset(Of(1, 2, 3))",
+	)
+
+	check.TrueMsg(
+		t,
+		Of(1, 2).IsSubset(Of(1, 2, 3)),
+		"Of(1, 2).IsSubset(Of(1, 2, 3))",
+	)
+
+	check.FalseMsg(
+		t,
+		Of(1, 2, 3).IsSubset(Of(1, 2)),
+		"Of(1, 2, 3).IsSubset(Of(1, 2))",
+	)
+
+	check.FalseMsg(
+		t,
+		Of(1, 2, 3).IsSubset(Of(1, 2, 4, 5)),
+		"Of(1, 2, 3).IsSubset(Of(1, 2, 4, 5))",
+	)
+
+	check.TrueMsg(
+		t,
+		Of().IsSubset(Of()),
+		"Of().IsSubset(Of())",
+	)
+
+	check.TrueMsg(
+		t,
+		Of().IsSubset(Of(1, 2, 3)),
+		"Of().IsSubset(Of(1, 2, 3))",
+	)
+}
+
+func TestBitSetIsSuperset(t *testing.T) {
+	check.TrueMsg(
+		t,
+		Of(1, 2, 3).IsSuperset(Of(1, 2, 3)),
+		"Of(1, 2, 3).IsSuperset(Of(1, 2, 3))",
+	)
+
+	check.FalseMsg(
+		t,
+		Of(1, 2).IsSuperset(Of(1, 2, 3)),
+		"Of(1, 2).IsSuperset(Of(1, 2, 3))",
+	)
+
+	check.TrueMsg(
+		t,
+		Of(1, 2, 3).IsSuperset(Of(1, 2)),
+		"Of(1, 2, 3).IsSuperset(Of(1, 2))",
+	)
+
+	check.FalseMsg(
+		t,
+		Of(1, 2, 3).IsSuperset(Of(1, 2, 4, 5)),
+		"Of(1, 2, 3).IsSuperset(Of(1, 2, 4, 5))",
+	)
+
+	check.TrueMsg(
+		t,
+		Of().IsSuperset(Of()),
+		"Of().IsSuperset(Of())",
+	)
+
+	check.FalseMsg(
+		t,
+		Of().IsSuperset(Of(1, 2, 3)),
+		"Of().IsSuperset(Of(1, 2, 3))",
+	)
+}
+
 func TestBitSetIter(t *testing.T) {
 	check.DeepEqMsg(
 		t,
@@ -313,22 +409,22 @@ func TestSmallDifference(t *testing.T) {
 	}
 }
 
-func TestSmallIsDisjoined(t *testing.T) {
+func TestSmallIsDisjoint(t *testing.T) {
 	check.FalseMsg(
 		t,
-		SmallOf(1, 2, 3).IsDisjoined(SmallOf(1, 2, 3)),
+		SmallOf(1, 2, 3).IsDisjoint(SmallOf(1, 2, 3)),
 		"SmallOf(1, 2, 3).IsDisjoined(SmallOf(1, 2, 3))",
 	)
 
 	check.TrueMsg(
 		t,
-		SmallOf(1, 2, 3).IsDisjoined(SmallOf(4, 5, 6)),
+		SmallOf(1, 2, 3).IsDisjoint(SmallOf(4, 5, 6)),
 		"SmallOf(1, 2, 3).IsDisjoined(SmallOf(4, 5, 6))",
 	)
 
 	check.FalseMsg(
 		t,
-		SmallOf(1, 2, 3).IsDisjoined(SmallOf(3, 4, 5)),
+		SmallOf(1, 2, 3).IsDisjoint(SmallOf(3, 4, 5)),
 		"SmallOf(1, 2, 3).IsDisjoined(SmallOf(3, 5, 4))",
 	)
 }
