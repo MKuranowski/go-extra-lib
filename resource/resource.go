@@ -15,146 +15,116 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/MKuranowski/go-extra-lib/clock"
+)
+
+const (
+	// Unconditional means that the resource must be fetched regardless if it has changed.
+	Unconditional = false
+
+	// Conditional means that the resource must be fetched only if it has changed.
+	Conditional = true
 )
 
 // Interface represents an external resource, which may change as the program is running.
 type Interface interface {
-	// FetchIfChanged first checks whether the underlying resource has changed.
+	// Fetch returns the content of the resource if the resource has changed,
+	// or the fetch is Unconditional.
 	//
-	// If it did, opens the resource and returns it, alongside a nil error.
-	// If it did not, returns (nil, nil).
-	// If any error has occurred, returns nil and that error.
-	FetchIfChanged() (io.ReadCloser, error)
+	// If an error occurs, (nil, false, err) is returned.
+	//
+	// For Conditional fetches, the hasChanged return value can be ignored -
+	// if the resource changed, returns its content; nil if the resource has not changed.
+	//
+	// For Unconditional fetches, the content is always non-nil, and the hasChanged
+	// flag is set appropriately.
+	Fetch(conditional bool) (content io.ReadCloser, hasChanged bool, err error)
 
-	// FetchTime returns the time when the resource was actually opened.
+	// FetchTime returns the time when the resource was successfully fetched.
 	FetchTime() time.Time
 
 	// LastModified returns the time when the external resource was changed as of FetchTime().
 	LastModified() time.Time
 }
 
-// OnFS is a resource that lives on an [fs.FS].
-// Files are consider as changed if their modification time advances.
+// File is a resource which supports the [fs.File] interface.
 //
-// &OnFS{FS: fs, Name: name} is ready to be used.
-type OnFS struct {
-	// FS is the filesystem on which the resource lives.
-	FS fs.FS
+// Files are considered as changed if their modification time (fs.File.Stat().ModTime())
+// has advanced forward.
+//
+// &File{Open: ...} is ready to use. See also helper [OnFS] and [Local] functions.
+type File struct {
+	// Open opens the resource file and must behave like [fs.FS]'s Open.
+	Open func() (fs.File, error)
 
-	// Name is the argument passed to FS.Open when checking
-	// if a resource has changed and for returning its content.
-	Name string
+	// Clock is the interface used to provide the fetchTime.
+	// In nil, [clock.SystemClock] will be used.
+	Clock clock.Interface
 
-	fetchTime    time.Time
-	lastModified time.Time
+	fetchTime, lastModified time.Time
 }
 
-var _ Interface = &OnFS{} // check that OnFS implements the interface
+var _ Interface = &File{}
 
-// FetchIfChanged returns the opened file on the filesystem,
-// if that file's modification time has advanced forward.
+// Fetch opens the file, stats it and returns it if either unconditionally is set to true,
+// or the modification time has advanced.
 //
-// If the modification time stayed the same (or moved backwards), returns (nil, nil).
-//
-// FetchTime and LastModified are updated accordingly.
-func (r *OnFS) FetchIfChanged() (content io.ReadCloser, err error) {
-	f, err := r.FS.Open(r.Name)
+// Returned content, if non-nil, will be exactly what Open() has returned.
+func (r *File) Fetch(conditional bool) (content io.ReadCloser, hasChanged bool, err error) {
+	// Ensure we have a clock
+	if r.Clock == nil {
+		r.Clock = clock.System
+	}
+
+	// Try to open the file
+	f, err := r.Open()
 	if err != nil {
 		err = fmt.Errorf("resource: Open: %w", err)
 		return
 	}
 
-	// Ensure the file is closed, unless it is returned - even on panic
+	// Ensure file is closed, unless it is returned
 	defer func() {
 		if content == nil {
 			f.Close()
 		}
 	}()
 
-	// Check the modified time of the file
+	// Try to stat the file
 	stat, err := f.Stat()
 	if err != nil {
 		err = fmt.Errorf("resource: Stat: %w", err)
 		return
 	}
 
-	// Compare the modification time - if it has advanced, return the content
-	currentModificationTime := stat.ModTime()
-	if currentModificationTime.After(r.lastModified) {
-		r.lastModified = currentModificationTime
-		r.fetchTime = time.Now()
-		content = f // assign file to content so that defer won't close it
-		return
+	// Return the file if modification time has advanced,
+	// or this is supposed to be an unconditional fetch.
+	modTime := stat.ModTime()
+	hasChanged = modTime.After(r.lastModified)
+	if !conditional || hasChanged {
+		r.fetchTime, r.lastModified = r.Clock.Now(), modTime
+		content = f
 	}
 
 	return
 }
 
-// FetchTime returns the time when the resource was actually opened.
-func (r *OnFS) FetchTime() time.Time { return r.fetchTime }
+// FetchTime returns the latest time when Fetch() returned a non-nil content.
+func (r *File) FetchTime() time.Time { return r.fetchTime }
 
 // LastModified returns the modification time of the resource when it was last opened.
-func (r *OnFS) LastModified() time.Time { return r.lastModified }
+func (r *File) LastModified() time.Time { return r.lastModified }
 
-// Local is a resource that lives on the local file system.
-// Files are consider as changed if their modification time advances.
-//
-// Uses [os.Open] internally.
-//
-// &Local{Path: path} is ready to use.
-type Local struct {
-	Path string
-
-	fetchTime    time.Time
-	lastModified time.Time
+// OnFS creates a [*File] resource which calls fileSystem.Open(name).
+func OnFS(fileSystem fs.FS, name string) *File {
+	return &File{Open: func() (fs.File, error) { return fileSystem.Open(name) }}
 }
 
-var _ Interface = &Local{} // check that Local implements the interface
-
-// FetchIfChanged returns the opened [*os.File], if
-// the file's modification time has advanced.
-//
-// If the modification time stayed the same (or moved backwards), returns (nil, nil).
-//
-// FetchTime and LastModified are updated accordingly.
-func (r *Local) FetchIfChanged() (content io.ReadCloser, err error) {
-	f, err := os.Open(r.Path)
-	if err != nil {
-		err = fmt.Errorf("resource: Open: %w", err)
-		return
-	}
-
-	// Ensure the file is closed, unless it is returned - even on panic
-	defer func() {
-		if content == nil {
-			f.Close()
-		}
-	}()
-
-	// Check the modified time of the file
-	stat, err := f.Stat()
-	if err != nil {
-		err = fmt.Errorf("resource: Stat: %w", err)
-		return
-	}
-
-	// Compare the modification time - if it has advanced, return the content
-	currentModificationTime := stat.ModTime()
-	if currentModificationTime.After(r.lastModified) {
-		r.lastModified = currentModificationTime
-		r.fetchTime = time.Now()
-		content = f // assign file to content so that defer won't close it
-		return
-	}
-
-	return
+// Local creates a [*File] resource which calls [os.Open](name).
+func Local(name string) *File {
+	return &File{Open: func() (fs.File, error) { return os.Open(name) }}
 }
-
-// FetchTime returns the time when the resource was actually opened.
-func (r *Local) FetchTime() time.Time { return r.fetchTime }
-
-// LastModified returns the modification time of the file when it was last opened.
-func (r *Local) LastModified() time.Time { return r.lastModified }
 
 // HTTP is a resource which lives on a remote HTTP or a HTTPS server.
 //
@@ -183,6 +153,10 @@ type HTTP struct {
 	// If nil, [http.DefaultClient] will be used.
 	Client *http.Client
 
+	// Clock is the interface used to provide the fetchTime.
+	// In nil, clock.SystemClock will be used.
+	Clock clock.Interface
+
 	fetchTime    time.Time
 	lastModified time.Time
 	etag         string
@@ -204,24 +178,30 @@ func (h HTTPError) Error() string {
 // Time format expected by e.g. the Last-Modified or If-Modified-Since headers
 const HTTPTimestampFormat = "Mon, 02 Jan 2006 15:04:05 GMT"
 
-// Returned by [HTTP.FetchIfChanged] if the response is missing the Last-Modified header.
+// Returned by [HTTP.Fetch] if the response is missing the Last-Modified header.
 var ErrHTTPNoLastModified = errors.New("server did not return the Last-Modified header")
 
 var _ Interface = &HTTP{} // check that HTTP implements the interface
 
-// FetchIfChanged tries to make a conditional request to the server,
-// using the If-None-Match and If-Modified-Since headers.
+// Fetch tries to fetch the resource.
 //
-// If the server returned 304 Not Modified - returns (nil, nil)
-// Otherwise, if the server returned 1xx or 2xx - returns (response.Body, nil).
+// If the fetch is Unconditional, makes use of the conditional request headers.
+// In this case, the server must reply with 304 Input Not Modified in order
+// for this function to detect that the content has not changed.
 //
-// On any errors, including 4xx, 5xx and other 3xx status codes;
-// nil is returned alongside the raised error.
-func (r *HTTP) FetchIfChanged() (body io.ReadCloser, err error) {
-	// Decide which http.Client to use
-	c := r.Client
-	if c == nil {
-		c = http.DefaultClient
+// If the fetch is Conditional, hasChanged will be set if the ETag has changed
+// (if the server returned one), or it the Last-Modified time has advanced.
+//
+// On any errors, including 4xx, 5xx and 3xx status codes, (nil, false, err) is returned.
+func (r *HTTP) Fetch(conditional bool) (body io.ReadCloser, hasChanged bool, err error) {
+	// Ensure a http.Client is present
+	if r.Client == nil {
+		r.Client = http.DefaultClient
+	}
+
+	// Ensure a clock is present
+	if r.Clock == nil {
+		r.Clock = clock.System
 	}
 
 	// Set the If-None-Match and If-Modified-Since headers
@@ -230,21 +210,21 @@ func (r *HTTP) FetchIfChanged() (body io.ReadCloser, err error) {
 	//
 	// On the first request r.etag will be empty and lasModified will be zero,
 	// thus none of the headers will be set and the server will respond with the content.
-	if r.etag != "" {
+	if conditional && r.etag != "" {
 		r.Request.Header.Set("If-None-Match", r.etag)
 	} else {
 		r.Request.Header.Del("If-None-Match")
 	}
 
-	if !r.lastModified.IsZero() {
+	if conditional && !r.lastModified.IsZero() {
 		r.Request.Header.Set("If-Modified-Since", r.lastModified.Format(HTTPTimestampFormat))
 	} else {
 		r.Request.Header.Del("If-Modified-Since")
 	}
 
 	// Run the request
-	requestTime := time.Now()
-	resp, err := c.Do(r.Request)
+	requestTime := r.Clock.Now()
+	resp, err := r.Client.Do(r.Request)
 	if err != nil {
 		err = fmt.Errorf("resource: Do request: %w", err)
 		return
@@ -257,42 +237,56 @@ func (r *HTTP) FetchIfChanged() (body io.ReadCloser, err error) {
 		}
 	}()
 
-	// 304 Input Not Modified - report that nothing has changed
-	if resp.StatusCode == http.StatusNotModified {
+	// 304 Input Not Modified - report that nothing has changed;
+	// but only for conditional requests.
+	if conditional && resp.StatusCode == http.StatusNotModified {
 		return
 	}
 
-	// Only return the content if the response was successful (2xx)
+	// Only return the content if the response was successful
 	if resp.StatusCode >= 300 {
 		err = &HTTPError{r.Request, resp}
 		return
 	}
 
 	// Try to parse Last-Modified
-	currentLastModifiedString := resp.Header.Get("Last-Modified")
-	if currentLastModifiedString == "" {
+	lastModifiedString := resp.Header.Get("Last-Modified")
+	if lastModifiedString == "" {
 		err = ErrHTTPNoLastModified
 		return
 	}
-	r.lastModified, err = time.Parse(HTTPTimestampFormat, currentLastModifiedString)
+	lastModified, err := time.Parse(HTTPTimestampFormat, lastModifiedString)
 	if err != nil {
 		err = fmt.Errorf("invalid Last-Modified: %w", err)
 		return
 	}
 
-	r.etag = resp.Header.Get("ETag")
-	r.fetchTime = requestTime
+	// Get the etag
+	etag := resp.Header.Get("ETag")
+
+	// Try to detect if the resource has changed for unconditional requests.
+	// Conditional requests at this point must have been modified,
+	// because of an early return if the server returned 304 Input Not Modified.
+	if !conditional && etag != "" {
+		hasChanged = etag == r.etag
+	} else if !conditional {
+		hasChanged = lastModified.After(r.lastModified)
+	} else {
+		hasChanged = true
+	}
+
+	r.fetchTime, r.etag, r.lastModified = requestTime, etag, lastModified
 	body = resp.Body
 	return
 }
 
-// FetchTime returns the last time when the resource was successfully fetched.
+// FetchTime returns the time of the latest fetch which returned a non-nil body.
 func (r *HTTP) FetchTime() time.Time { return r.fetchTime }
 
-// LastModified returns the value of Last-Modified as of last successful fetch.
+// LastModified returns the value of Last-Modified as of FetchTime().
 func (r *HTTP) LastModified() time.Time { return r.lastModified }
 
-// ETag returns the value of the ETag header as of last successful fetch.
+// ETag returns the value of the ETag header as of FetchTime().
 func (r *HTTP) ETag() string { return r.etag }
 
 // HTTPGet creates a simple HTTP resource performing GET requests to the specified URL
@@ -386,21 +380,20 @@ func HTTPPostFormURL(url *url.URL, data url.Values) *HTTP {
 }
 
 // TimeLimited is a simple rate-limiting mechanizm for Resources -
-// ensures R.FetchIfChanged() is called when at least MinimalTimeBetween has passed.
+// ensures R.Fetch() is called when at least MinimalTimeBetween has passed.
 type TimeLimited struct {
 	R                  Interface
 	MinimalTimeBetween time.Duration
+
+	// Clock is the interface used to provide time - to decide when to fetch
+	// forward the fetches to the underlying resource.
+	// In nil, [clock.SystemClock] will be used.
+	Clock clock.Interface
 
 	nextCheck time.Time
 }
 
 var _ Interface = &TimeLimited{} // check that TimeLimited implements the interface
-
-// ShouldCheck returns true if sufficient time has passed from last call to
-// [Resource.FetchIfChanged] to facilitate another call.
-func (t *TimeLimited) ShouldCheck() bool {
-	return time.Now().After(t.nextCheck)
-}
 
 // NextCheck returns the time when the resource should be checked,
 // or a zero-value time.Time if the resource was never checked.
@@ -415,27 +408,20 @@ func (t *TimeLimited) LastCheck() time.Time {
 	return t.nextCheck.Add(-t.MinimalTimeBetween)
 }
 
-// ForceFetchIfChanged bypasses the timer checks and always calls R.FetchIfChanged.
-// Also updates the NextCheck() and LastCheck() fields.
-func (t *TimeLimited) ForceFetchIfChanged() (io.ReadCloser, error) {
-	t.nextCheck = time.Now().Add(t.MinimalTimeBetween)
-	return t.R.FetchIfChanged()
-}
-
-// FetchIfChanged checks if it is time to check the resource -
-// and returns the result of calling R.FetchIfChanged(); or (nil, nil) otherwise.
-//
-// Shorthand for:
-//
-//	if t.ShouldCheck() {
-//		return t.ForceFetchIfChanged()
-//	}
-//	return (nil, nil)
-func (t *TimeLimited) FetchIfChanged() (io.ReadCloser, error) {
-	if t.ShouldCheck() {
-		return t.ForceFetchIfChanged()
+// Fetch forwards the call to R.Fetch(conditional) only if it is time to check the resource
+// (see [TimeLimited.ShouldCheck]) or the fetch is Unconditional.
+func (t *TimeLimited) Fetch(conditional bool) (content io.ReadCloser, hasChanged bool, err error) {
+	// Ensure a clock is present
+	if t.Clock == nil {
+		t.Clock = clock.System
 	}
-	return nil, nil
+
+	now := t.Clock.Now()
+	if !conditional || now.After(t.nextCheck) {
+		t.nextCheck = now.Add(t.MinimalTimeBetween)
+		return t.R.Fetch(conditional)
+	}
+	return
 }
 
 // FetchTime returns the last time the resource was actually fetched;

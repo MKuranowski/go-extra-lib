@@ -14,16 +14,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MKuranowski/go-extra-lib/clock"
 	"github.com/MKuranowski/go-extra-lib/resource"
 	"github.com/MKuranowski/go-extra-lib/testing2/assert"
 )
 
 const fixtureContent = "Hello, world!\n"
 
-func assertResourceFetched(t *testing.T, r resource.Interface, sequence int) {
+func assertResourceFetched(t *testing.T, r resource.Interface, conditional bool, sequence int) {
 	msgPrefix := fmt.Sprintf("FetchIfChanged-%d: ", sequence)
 
-	f, err := r.FetchIfChanged()
+	f, _, err := r.Fetch(conditional)
 	assert.NoErrMsg(t, err, msgPrefix+"error")
 
 	if f == nil {
@@ -38,8 +39,8 @@ func assertResourceFetched(t *testing.T, r resource.Interface, sequence int) {
 	assert.EqMsg(t, string(content), fixtureContent, msgPrefix+"content")
 }
 
-func assertResourceNotFetched(t *testing.T, r resource.Interface, sequence int) {
-	f, err := r.FetchIfChanged()
+func assertResourceNotFetched(t *testing.T, r resource.Interface, conditional bool, sequence int) {
+	f, _, err := r.Fetch(conditional)
 	if err != nil {
 		t.Fatalf("FetchIfChanged-%d: error: got: %v, expected: nil", sequence, err)
 	}
@@ -51,26 +52,27 @@ func assertResourceNotFetched(t *testing.T, r resource.Interface, sequence int) 
 
 func testResource(t *testing.T, r resource.Interface, sleepBeforeChecking time.Duration, refresh func()) {
 	refresh()
-	assertResourceFetched(t, r, 1)
+	assertResourceFetched(t, r, resource.Conditional, 1)
 
 	time.Sleep(sleepBeforeChecking)
-	assertResourceNotFetched(t, r, 2)
+	assertResourceNotFetched(t, r, resource.Conditional, 2)
 
 	time.Sleep(sleepBeforeChecking)
 	refresh()
-	assertResourceFetched(t, r, 3)
+	assertResourceFetched(t, r, resource.Conditional, 3)
 
 	time.Sleep(sleepBeforeChecking)
-	assertResourceNotFetched(t, r, 4)
+	assertResourceNotFetched(t, r, resource.Conditional, 4)
+
+	time.Sleep(sleepBeforeChecking)
+	assertResourceFetched(t, r, resource.Unconditional, 5)
 }
 
 func TestLocal(t *testing.T) {
-	t.Parallel()
-
 	path := filepath.Join(t.TempDir(), "local_test.txt")
 	testResource(
 		t,
-		&resource.Local{Path: path},
+		resource.Local(path),
 		10*time.Millisecond, // a few ms are required for the file system to have a different modification time
 		func() {
 			err := os.WriteFile(path, []byte(fixtureContent), 0o600)
@@ -82,8 +84,6 @@ func TestLocal(t *testing.T) {
 }
 
 func TestOnFS(t *testing.T) {
-	t.Parallel()
-
 	tempDir := t.TempDir()
 	const name = "on_fs_test.txt"
 
@@ -92,7 +92,7 @@ func TestOnFS(t *testing.T) {
 
 	testResource(
 		t,
-		&resource.OnFS{FS: fs, Name: name},
+		resource.OnFS(fs, name),
 		10*time.Millisecond, // a few ms are required for the file system to have a different modification time
 		func() {
 			err := os.WriteFile(path, []byte(fixtureContent), 0o600)
@@ -104,9 +104,14 @@ func TestOnFS(t *testing.T) {
 }
 
 func TestHTTPLastModified(t *testing.T) {
-	t.Parallel()
+	// Use a different clock to overcome Last-Modified's resolution of 1 second -
+	// otherwise the test takes ages to run.
+	c := &clock.EvenlySpaced{
+		T:     time.Date(2022, 11, 11, 10, 0, 0, 0, time.UTC),
+		Delta: 30 * time.Second,
+	}
 
-	refreshTime := time.Now().UTC().Truncate(time.Second)
+	refreshTime := c.Now()
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
@@ -114,7 +119,7 @@ func TestHTTPLastModified(t *testing.T) {
 
 		ifModifiedSinceString := r.Header.Get("If-Modified-Since")
 
-		// Try to parse the If-Modified-Since and check
+		// Try to parse the If-Modified-Since and check it
 		if ifModifiedSinceString != "" {
 			ifModifiedSince, err := time.Parse(resource.HTTPTimestampFormat, ifModifiedSinceString)
 			if err != nil {
@@ -132,17 +137,13 @@ func TestHTTPLastModified(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	testResource(
-		t,
-		resource.HTTPGet(ts.URL),
-		1005*time.Millisecond, // Last-Modified has a resolution of 1s
-		func() { refreshTime = time.Now().UTC().Truncate(time.Second) },
-	)
+	res := resource.HTTPGet(ts.URL)
+	res.Clock = c
+
+	testResource(t, res, 0, func() { refreshTime = c.Now().UTC() })
 }
 
 func TestHTTPEtag(t *testing.T) {
-	t.Parallel()
-
 	refreshTime := time.Now().UTC()
 	etagCounter := 0
 
@@ -171,31 +172,53 @@ func TestHTTPEtag(t *testing.T) {
 }
 
 type fixtureResource struct {
+	Clock clock.Interface
+
 	fetchTime, lastModified time.Time
 }
 
-func (f *fixtureResource) FetchIfChanged() (io.ReadCloser, error) {
-	if f.lastModified.After(f.fetchTime) {
-		f.fetchTime = time.Now()
-		return io.NopCloser(strings.NewReader(fixtureContent)), nil
+func (f *fixtureResource) Fetch(conditional bool) (content io.ReadCloser, hasChanged bool, err error) {
+	hasChanged = f.lastModified.After(f.fetchTime)
+	if !conditional || hasChanged {
+		f.fetchTime = f.Clock.Now()
+		content = io.NopCloser(strings.NewReader(fixtureContent))
 	}
-	return nil, nil
+	return
 }
 
 func (f *fixtureResource) FetchTime() time.Time    { return f.fetchTime }
 func (f *fixtureResource) LastModified() time.Time { return f.lastModified }
-func (f *fixtureResource) Refresh()                { f.lastModified = time.Now() }
+func (f *fixtureResource) Refresh()                { f.lastModified = f.Clock.Now() }
 
 func TestTimeLimited(t *testing.T) {
-	r := fixtureResource{}
+	c := &clock.Specific{Times: []time.Time{
+		time.Date(2022, 11, 11, 10, 0, 0, 0, time.UTC),  // 1st call to refresh
+		time.Date(2022, 11, 11, 10, 0, 0, 0, time.UTC),  // 1st call to fetch (initial)
+		time.Date(2022, 11, 11, 10, 0, 0, 0, time.UTC),  // 1st fetchTime set
+		time.Date(2022, 11, 11, 10, 0, 15, 0, time.UTC), // 2nd call to refresh
+		time.Date(2022, 11, 11, 10, 0, 30, 0, time.UTC), // 2nd call to fetch (time limited; changed)
+		time.Date(2022, 11, 11, 10, 1, 30, 0, time.UTC), // 3rd call to fetch (not limited; changed)
+		time.Date(2022, 11, 11, 10, 1, 30, 0, time.UTC), // 2nd fetchTime set
+		time.Date(2022, 11, 11, 10, 2, 0, 0, time.UTC),  // 4th call to fetch (time limited; not changed)
+		time.Date(2022, 11, 11, 10, 5, 0, 0, time.UTC),  // 5th call to fetch (not limited; not changed)
+		time.Date(2022, 11, 11, 10, 6, 0, 0, time.UTC),  // 6th call to fetch (unconditional)
+		time.Date(2022, 11, 11, 10, 6, 0, 0, time.UTC),  // 3rd fetchTime set
+	}}
+
+	r := fixtureResource{Clock: c}
+	tl := &resource.TimeLimited{
+		R:                  &r,
+		MinimalTimeBetween: time.Minute,
+		Clock:              c,
+	}
+
 	r.Refresh()
-
-	tl := &resource.TimeLimited{R: &r, MinimalTimeBetween: time.Millisecond}
-	assertResourceFetched(t, tl, 1)
+	assertResourceFetched(t, tl, resource.Conditional, 1)
 
 	r.Refresh()
-	assertResourceNotFetched(t, tl, 2)
-
-	time.Sleep(time.Millisecond)
-	assertResourceFetched(t, tl, 3)
+	assertResourceNotFetched(t, tl, resource.Conditional, 2)
+	assertResourceFetched(t, tl, resource.Conditional, 3)
+	assertResourceNotFetched(t, tl, resource.Conditional, 4)
+	assertResourceNotFetched(t, tl, resource.Conditional, 5)
+	assertResourceFetched(t, tl, resource.Unconditional, 6)
 }
