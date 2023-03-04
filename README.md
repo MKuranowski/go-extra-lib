@@ -8,6 +8,7 @@ To avoid copy-pasting I have gathered them in a single importable package.
 Packages
 --------
 
+- `clock`: helper interface for providing time.
 - `container`:
     - `bitset`: An efficient implementation of a set of unsigned numbers
     - `set`: An unordered collection of elements (map\[T\]struct{})
