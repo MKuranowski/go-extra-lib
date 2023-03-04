@@ -46,3 +46,18 @@ func (s *Specific) Now() time.Time {
 
 	return t
 }
+
+// EvenlySpaced is a clock providing evenly-spaced times with every call to Now:
+// T, T+Delta, T + 2*Delta, ...
+//
+// &EvenlySpaced{Delta: ...} is ready to use, although starts at 0001-01-01 0:00:00 (the ero value of time.Time).
+type EvenlySpaced struct {
+	T     time.Time
+	Delta time.Duration
+}
+
+func (es *EvenlySpaced) Now() time.Time {
+	t := es.T
+	es.T = es.T.Add(es.Delta)
+	return t
+}

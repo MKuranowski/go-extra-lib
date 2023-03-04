@@ -48,3 +48,14 @@ func TestSpecificWrapAround(t *testing.T) {
 	checkSameTime(t, c.Now(), times[1], "8")
 	checkSameTime(t, c.Now(), times[2], "9")
 }
+
+func TestEvenlySpaced(t *testing.T) {
+	c := &clock.EvenlySpaced{
+		T:     time.Date(2005, 5, 3, 15, 30, 0, 0, time.UTC),
+		Delta: time.Minute,
+	}
+
+	checkSameTime(t, c.Now(), time.Date(2005, 5, 3, 15, 30, 0, 0, time.UTC), "1")
+	checkSameTime(t, c.Now(), time.Date(2005, 5, 3, 15, 31, 0, 0, time.UTC), "2")
+	checkSameTime(t, c.Now(), time.Date(2005, 5, 3, 15, 32, 0, 0, time.UTC), "3")
+}
