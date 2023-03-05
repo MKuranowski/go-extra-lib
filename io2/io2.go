@@ -36,3 +36,9 @@ func (r *repeated[T]) Read(p []byte) (n int, err error) {
 
 // Repeated yields the provided string n number of times.
 func Repeated[T ~string | ~[]byte](s T, n int) io.Reader { return &repeated[T]{s: s, times: n} }
+
+// ReadAtSeeker is an interface which groups together [io.ReaderAt] and [io.Seeker].
+type ReadAtSeeker interface {
+	io.ReaderAt
+	io.Seeker
+}
