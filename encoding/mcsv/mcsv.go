@@ -11,6 +11,7 @@ import (
 	"encoding/csv"
 	"errors"
 	"io"
+	"unicode/utf8"
 
 	"golang.org/x/exp/maps"
 )
@@ -41,8 +42,15 @@ type Reader struct {
 	// The csv.Reader.ReuseRecord setting is controlled by mcsv.Reader and must not be changed.
 	ReuseRecord bool
 
+	// PreserveBOM ensures an initial byte-order-mark in the first ever read from the file
+	// is not removed. The default behavior removes the BOM.
+	PreserveBOM bool
+
 	// lastRecord returned by Read() if ReuseRecord is enabled
 	lastRecord map[string]string
+
+	// didRead is flag used to control the behavior of BOM removal.
+	removedBOM bool
 }
 
 // NewReader returns a Reader pulling CSV records from r.
@@ -65,12 +73,29 @@ func NewReaderWithHeader(r io.Reader, header []string) *Reader {
 	return n
 }
 
+// readRow returns the result of calling r.Reader.Read,
+// with additionally handling the byte-order-mark.
+func (r *Reader) readRow() (row []string, err error) {
+	row, err = r.Reader.Read()
+
+	// Remove the byte-order-mark
+	if err == nil && !r.PreserveBOM && !r.removedBOM && len(row) > 0 {
+		r.removedBOM = true
+		first, size := utf8.DecodeRuneInString(row[0])
+		if first == '\uFEFF' {
+			row[0] = row[0][size:]
+		}
+	}
+
+	return
+}
+
 func (r *Reader) ensureHeader() (err error) {
 	if r.Header != nil {
 		return nil
 	}
 
-	header, err := r.Reader.Read()
+	header, err := r.readRow()
 	if err != nil {
 		return
 	} else {
@@ -96,7 +121,7 @@ func (r *Reader) Read() (record map[string]string, err error) {
 	}
 
 	// retrieve the next record
-	recordList, err := r.Reader.Read()
+	recordList, err := r.readRow()
 	if err == nil {
 		// prepare the record map
 		if r.ReuseRecord && r.lastRecord != nil {

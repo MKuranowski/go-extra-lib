@@ -33,7 +33,8 @@ type readerTest struct {
 	header []string // If nil, use mcsv.NewReader; otherwise use mcsv.NewReaderWithHeader
 	result []map[string]string
 
-	comma rune // if non zero, set Reader.Comma
+	comma       rune // if non zero, set Reader.Comma
+	preserveBOM bool
 }
 
 var readerTests = []readerTest{
@@ -101,6 +102,34 @@ e,2.7183
 			{"field1": "this is going to be", "field2": "another\nbroken row", "field3": "very confusing"},
 		},
 	},
+
+	{
+		name:   "SkipsBOM",
+		input:  "\uFEFFa,b,c\n1,2,3\n",
+		result: []map[string]string{{"a": "1", "b": "2", "c": "3"}},
+	},
+
+	{
+		name:   "SkipsBOMWithHeader",
+		input:  "\uFEFF1,2,3\n",
+		header: []string{"a", "b", "c"},
+		result: []map[string]string{{"a": "1", "b": "2", "c": "3"}},
+	},
+
+	{
+		name:        "PreserveBOM",
+		input:       "\uFEFFa,b,c\n1,2,3\n",
+		result:      []map[string]string{{"\uFEFFa": "1", "b": "2", "c": "3"}},
+		preserveBOM: true,
+	},
+
+	{
+		name:        "PreserveBOMWithHeader",
+		input:       "\uFEFF1,2,3\n",
+		header:      []string{"a", "b", "c"},
+		result:      []map[string]string{{"a": "\uFEFF1", "b": "2", "c": "3"}},
+		preserveBOM: true,
+	},
 }
 
 func runReadTest(t *testing.T, r *mcsv.Reader, expected []map[string]string) {
@@ -139,6 +168,7 @@ func getReaderForTest(test readerTest) (r *mcsv.Reader) {
 	if test.comma != 0 {
 		r.Comma = test.comma
 	}
+	r.PreserveBOM = test.preserveBOM
 
 	return
 }
