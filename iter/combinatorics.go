@@ -6,8 +6,7 @@ package iter
 import (
 	"fmt"
 	"math/bits"
-
-	"golang.org/x/exp/slices"
+	"slices"
 )
 
 type cartesianProductIterator[T any] struct {

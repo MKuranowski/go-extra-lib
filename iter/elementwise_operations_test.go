@@ -4,6 +4,7 @@
 package iter_test
 
 import (
+	"cmp"
 	"errors"
 	"strconv"
 	"strings"
@@ -19,6 +20,7 @@ type person struct {
 }
 
 func isOver18(p person) bool     { return p.age >= 18 }
+func ageCmp(p1, p2 person) int   { return cmp.Compare(p1.age, p2.age) }
 func younger(p1, p2 person) bool { return p1.age < p2.age }
 func older(p1, p2 person) bool   { return p1.age > p2.age }
 

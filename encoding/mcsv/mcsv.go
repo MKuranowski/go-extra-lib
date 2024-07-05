@@ -11,9 +11,8 @@ import (
 	"encoding/csv"
 	"errors"
 	"io"
+	"maps"
 	"unicode/utf8"
-
-	"golang.org/x/exp/maps"
 )
 
 // Reader reads records from a CSV io.Reader.

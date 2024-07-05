@@ -1,5 +1,5 @@
 module github.com/MKuranowski/go-extra-lib
 
-go 1.18
+go 1.22
 
-require golang.org/x/exp v0.0.0-20230213192124-5e25df0256eb
+require golang.org/x/exp v0.0.0-20240613232115-7f521ea00fb8

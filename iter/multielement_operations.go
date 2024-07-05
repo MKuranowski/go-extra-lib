@@ -6,9 +6,9 @@ package iter
 import (
 	"fmt"
 	"math/bits"
+	"slices"
 
 	"golang.org/x/exp/constraints"
-	"golang.org/x/exp/slices"
 )
 
 type deepIterState uint8
@@ -507,13 +507,7 @@ func PairwiseLongest[T, U any](ts Iterator[T], us Iterator[U], tFill T, uFill U)
 // Sort collects all elements of an iterator into a slice,
 // and the sorts it with the help of [slices.Sort].
 //
-// Because of the assumption made by [slices.Sort], [strict weak ordering] is required.
-// Such ordering is not satisfied, e.g. when floating point NaN values are present;
-// in that case use `SortFunc(x, func(a, b float64) bool {return a < b || (math.IsNaN(a) && !math.IsNaN(b))})`.
-//
 //	Sort([2 3 1 0]) → [0 1 2 3]
-//
-// [strict weak ordering]: https://en.wikipedia.org/wiki/Weak_ordering#Strict_weak_orderings
 func Sort[T constraints.Ordered](i Iterator[T]) Iterator[T] {
 	s := IntoSlice(i)
 	slices.Sort(s)
@@ -522,17 +516,11 @@ func Sort[T constraints.Ordered](i Iterator[T]) Iterator[T] {
 
 // SortFunc collects all elements of an iterator into a slice,
 // and the sorts it using [slices.SortFunc] with the provided comparator function.
-//
-// Because of the assumption made by [slices.Sort], [strict weak ordering] is required.
-// Such ordering is not satisfied by the `<` operator when floating point NaN values are present;
-// in that case use `func(a, b float64) bool {return a < b || (math.IsNaN(a) && !math.IsNaN(b))}`,
-// as the comparator function.
+// Use stdlib [cmp.Compare] for comparing primitive values.
 //
 //	people := []Person{{"Alice", 30}, {"Bob", 25}, {"Charlie", 41}}
 //	SortFunc(people, p => p.age) → [{"Bob", 25}, {"Alice", 30}, {"Charlie", 41}]
-//
-// [strict weak ordering]: https://en.wikipedia.org/wiki/Weak_ordering#Strict_weak_orderings
-func SortFunc[T any](i Iterator[T], less func(T, T) bool) Iterator[T] {
+func SortFunc[T any](i Iterator[T], less func(T, T) int) Iterator[T] {
 	s := IntoSlice(i)
 	slices.SortFunc(s, less)
 	return OverSlice(s)
@@ -548,7 +536,7 @@ func SortFunc[T any](i Iterator[T], less func(T, T) bool) Iterator[T] {
 // as the comparator function.
 //
 // [strict weak ordering]: https://en.wikipedia.org/wiki/Weak_ordering#Strict_weak_orderings
-func SortStableFunc[T any](i Iterator[T], less func(T, T) bool) Iterator[T] {
+func SortStableFunc[T any](i Iterator[T], less func(T, T) int) Iterator[T] {
 	s := IntoSlice(i)
 	slices.SortStableFunc(s, less)
 	return OverSlice(s)
